@@ -1,7 +1,7 @@
 # Use Python 3.11 as base image
 FROM python:3.11-slim
 
-
+ENV PYTHONUNBUFFERED=1
 
 # Set the working directory in the container
 WORKDIR /app

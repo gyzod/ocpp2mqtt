@@ -52,16 +52,16 @@ class ChargePoint(cp):
             print('--- Not Authorized')
             authorization=AuthorizationStatus.blocked
             
-        self.push_state_value_mqtt(self, f"authorize_{id_tag}", authorization)
+        self.push_state_value_mqtt(f"authorize_{id_tag}", authorization)
         return call_result.Authorize(id_tag_info={'status': authorization})
     
 
     @on(Action.BootNotification)
-    def on_boot_notification(self, charge_point_vendor: str, charge_point_model: str, **kwargs):
+    async def on_boot_notification(self, charge_point_vendor: str, charge_point_model: str, **kwargs):
         print('--- Boot Notification')
-        self.push_state_value_mqtt(self, "charge_point_vendor", charge_point_vendor)
-        self.push_state_value_mqtt(self, "charge_point_model", charge_point_model)
-        self.push_state_values_mqtt(self,**kwargs)
+        await self.push_state_value_mqtt("charge_point_vendor", charge_point_vendor)
+        await self.push_state_value_mqtt("charge_point_model", charge_point_model)
+        await self.push_state_values_mqtt(**kwargs)
 
         return call_result.BootNotification(
             current_time=datetime.utcnow().isoformat(),
@@ -72,19 +72,19 @@ class ChargePoint(cp):
     @on(Action.DataTransfer)
     async def on_data_transfer(self, **kwargs):
         print("--- Got Data Transfer")
-        self.push_state_values_mqtt(self, **kwargs)
+        await self.push_state_values_mqtt(self, **kwargs)
         #return not implemented
 
     @on(Action.DiagnosticsStatusNotification)
     async def on_diagnostics_status_notification(self, **kwargs):
         print("--- Got DiagnosticsStatusNotification")
-        self.push_state_values_mqtt(self, **kwargs)
+        await self.push_state_values_mqtt(**kwargs)
         return call_result.DiagnosticsStatusNotification()
 
     @on(Action.FirmwareStatusNotification)
     async def on_firmware_status_notification(self, **kwargs):
         print("--- Got FirmwareStatusNotification")
-        self.push_state_values_mqtt(self, **kwargs)
+        await self.push_state_values_mqtt(**kwargs)
         return call_result.FirmwareStatusNotification()
 
     @on(Action.Heartbeat)
@@ -99,7 +99,7 @@ class ChargePoint(cp):
     @on(Action.MeterValues)
     async def on_meter_values(self, **kwargs):
         print('--- Meter values CP')
-        self.push_state_values_mqtt(self,**kwargs)
+        await self.push_state_values_mqtt(**kwargs)
         for k,v in kwargs.items():
             print(k, v)
         return call_result.MeterValues()
@@ -108,8 +108,8 @@ class ChargePoint(cp):
     async def on_start_transaction(self, connector_id: int, id_tag: str, meter_start: int, timestamp: str, **kwargs):
         print('--- Started transaction in CP')
 
-        self.push_state_value_mqtt(self,"ev_connected", "ON")
-        self.push_state_values_mqtt(self,**kwargs)
+        await self.push_state_value_mqtt("ev_connected", "ON")
+        await self.push_state_values_mqtt(**kwargs)
         
         for k,v in kwargs.items():
             print(k, v)
@@ -120,20 +120,19 @@ class ChargePoint(cp):
         )
 
     @on(Action.StatusNotification)
-    async def on_status_notification(
-        self, connector_id: int, error_code: str, status: str, **kwargs):
+    async def on_status_notification(self, connector_id: int, error_code: str, status: str, **kwargs):
         print("--- Got Status Notification")
-        self.push_state_value_mqtt('error_code', error_code)
-        self.push_state_value_mqtt('status', status)
-        self.push_state_values_mqtt(self,**kwargs)
+        await self.push_state_value_mqtt('error_code', error_code)
+        await self.push_state_value_mqtt('status', status)
+        await self.push_state_values_mqtt(**kwargs)
         return call_result.StatusNotification()
     
     @on(Action.StopTransaction)
     async def on_stop_transaction(self,  **kwargs):
         print('--- Stopped transaction in CP')
 
-        self.push_state_value_mqtt(self,"ev_connected", "OFF")
-        self.push_state_values_mqtt(self,**kwargs)
+        await self.push_state_value_mqtt("ev_connected", "OFF")
+        await self.push_state_values_mqtt(**kwargs)
 
         for k,v in kwargs.items():
             print(k, v)
@@ -143,7 +142,7 @@ class ChargePoint(cp):
         )
    
     # MQTT implementation
-    
+
     ## MQTT publish
 
     async def push_state_values_mqtt(self,**kwargs):
@@ -165,9 +164,47 @@ class ChargePoint(cp):
                     msg = JSON.loads(message.payload.decode("utf-8"))
                     print("MQTT msg: ")
                     print(msg)
-                    f=getattr(mqtt_2_charge_point, msg['op'])
-                    f(self, msg['message'])
-                    
+                    match msg['op']:
+                        case 'cancel_reservation':
+                            await mqtt_2_charge_point.cancel_reservation(self, msg['message'])
+                        case 'change_availability':
+                            await mqtt_2_charge_point.change_availability(self, msg['message'])
+                        case 'change_configuration':
+                            await mqtt_2_charge_point.change_configuration(self, msg['message'])
+                        case 'clear_cache':
+                            await mqtt_2_charge_point.clear_cache(self, msg['message'])
+                        case 'clear_charging_profile':
+                            await mqtt_2_charge_point.clear_charging_profile(self, msg['message'])
+                        case 'data_transfer':
+                            await mqtt_2_charge_point.data_transfer(self, msg['message'])
+                        case 'get_composite_schedule':
+                            await mqtt_2_charge_point.get_composite_schedule(self, msg['message'])
+                        case 'get_configuration':
+                            await mqtt_2_charge_point.get_configuration(self, msg['message'])
+                        case 'get_diagnostics':
+                            await mqtt_2_charge_point.get_diagnostics(self, msg['message'])
+                        case 'get_local_version':
+                            await mqtt_2_charge_point.get_local_version(self, msg['message'])
+                        case 'remote_start_transaction':
+                            await mqtt_2_charge_point.remote_start_transaction(self, msg['message'])
+                        case 'remote_stop_transaction':
+                            await mqtt_2_charge_point.remote_stop_transaction(self, msg['message'])
+                        case 'reserve_now':
+                            await mqtt_2_charge_point.reserve_now(self, msg['message'])
+                        case 'reset':
+                            await mqtt_2_charge_point.reset(self, msg['message'])
+                        case 'send_local_list':
+                            await mqtt_2_charge_point.send_local_list(self, msg['message'])
+                        case 'set_charging_profile':
+                            await mqtt_2_charge_point.set_charging_profile(self, msg['message'])
+                        case 'trigger_message':
+                            await mqtt_2_charge_point.trigger_message(self, msg['message'])
+                        case 'unlock_connector':
+                            await mqtt_2_charge_point.unlock_connector(self, msg['message'])
+                        case 'update_firmware':
+                            await mqtt_2_charge_point.update_firmware(self, msg['message'])
+                        case _:
+                            print("Operation not found")                    
         except MqttError as e:
             print("MQTT error: " + str(e))
             raise e
