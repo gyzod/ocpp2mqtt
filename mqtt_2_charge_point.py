@@ -38,10 +38,10 @@ def get_local_version(cp, payload):
     return cp.call(call.GetLocalListVersion(**payload))
 
 def remote_start_transaction(cp, payload):
-    return cp.call(call.StartTransaction(**payload))
+    return cp.call(call.RemoteStartTransaction(**payload))
 
 def remote_stop_transaction(cp, payload):
-    return cp.call(call.StopTransaction(**payload))
+    return cp.call(call.RemoteStopTransaction(**payload))
 
 def reserve_now(cp, payload):
     return cp.call(call.ReserveNow(**payload))

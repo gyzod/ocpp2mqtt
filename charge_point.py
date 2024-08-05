@@ -52,7 +52,7 @@ class ChargePoint(cp):
             print('--- Not Authorized')
             authorization=AuthorizationStatus.blocked
             
-        self.push_state_value_mqtt(f"authorize_{id_tag}", authorization)
+        await self.push_state_value_mqtt(f"authorize_{id_tag}", authorization)
         return call_result.Authorize(id_tag_info={'status': authorization})
     
 
@@ -99,9 +99,14 @@ class ChargePoint(cp):
     @on(Action.MeterValues)
     async def on_meter_values(self, **kwargs):
         print('--- Meter values CP')
-        await self.push_state_values_mqtt(**kwargs)
+        
+        for i in kwargs['meter_value'][0]['sampled_value']:
+            await self.push_state_value_mqtt((i['measurand']).replace('.','_').lower(), i['value'])
+
         for k,v in kwargs.items():
             print(k, v)
+        
+        
         return call_result.MeterValues()
     
     @on(Action.StartTransaction)
