@@ -43,7 +43,7 @@ OCPP2MQTT is a gateway software that converts OCPP (Open Charge Point Protocol) 
 
 ## Configuration
 
-Edit the `.env` file to set your OCPP and MQTT parameters:
+Edit or create the `.env` file to set your OCPP and MQTT parameters:
 
 ```bash
 MQTT_PORT=1883
