@@ -39,7 +39,7 @@ ocpp2mqtt is a gateway software that converts OCPP (Open Charge Point Protocol) 
     docker run
     ```
 
-3. The application will start listening for OCPP requests and convert them to MQTT messages.
+3. The application will start listening for OCPP and MQTT requests and convert them to MQTT or OCPP messages.
 
 ## Configuration
 
