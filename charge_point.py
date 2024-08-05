@@ -35,6 +35,10 @@ class ChargePoint(cp):
     transaction_id = 0
     authorized_tag_id = ""
 
+    def get_transaction_id(self):
+        self.transaction_id += 1
+        return self.transaction_id
+
     #Received events from the charge point
     @on(Action.Authorize)
     async def on_authorize(self, id_tag: str):
@@ -139,7 +143,8 @@ class ChargePoint(cp):
         )
    
     # MQTT implementation
-    ## mqtt calls
+    
+    ## MQTT publish
 
     async def push_state_values_mqtt(self,**kwargs):
         for k,v in kwargs.items():
@@ -148,6 +153,7 @@ class ChargePoint(cp):
     async def push_state_value_mqtt(self, key, value):
         await self.client.publish(f"{MQTT_BASEPATH}/state/{key}", payload=value)
 
+    ## received events from MQTT
     async def mqtt_listen(self):
         print("start mqtt")
 
@@ -156,7 +162,6 @@ class ChargePoint(cp):
                 self.client=client
                 await client.subscribe(f"{MQTT_BASEPATH}/cmd/#")
                 async for message in client.messages:
-                    #msg = str(message.payload.decode("utf-8")).split()
                     msg = JSON.loads(message.payload.decode("utf-8"))
                     print("MQTT msg: ")
                     print(msg)
