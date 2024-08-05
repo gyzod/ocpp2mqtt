@@ -1,6 +1,6 @@
-# OCPP2MQTT
+# ocpp2mqtt
 
-OCPP2MQTT is a gateway software that converts OCPP (Open Charge Point Protocol) requests to MQTT (Message Queuing Telemetry Transport) and vice versa. This allows the integration of charging stations with any automation system.
+ocpp2mqtt is a gateway software that converts OCPP (Open Charge Point Protocol) requests to MQTT (Message Queuing Telemetry Transport) and vice versa. This allows the integration of charging stations with any automation system.
 
 ## Features
 
@@ -39,7 +39,7 @@ OCPP2MQTT is a gateway software that converts OCPP (Open Charge Point Protocol) 
     docker run
     ```
 
-3. The application will start listening for OCPP requests and convert them to MQTT messages.
+3. The application will start listening for OCPP and MQTT requests and convert them to MQTT or OCPP messages.
 
 ## Configuration
 
