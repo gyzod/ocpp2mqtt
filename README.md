@@ -57,6 +57,39 @@ AUTHORIZED_TAG_ID_LIST='["johnny-car","other-car"]'
 
 ```
 
+## MQTT topics and messages
+
+state topics : /ocpp/[your charger]/state is where all the data sent from charge_point to the central_system is sent.
+
+cmd topic : /ocpp/[your charger]/cmd
+
+where the schema for MQTT messages is : 
+
+```
+{
+    "op": "the operation from the central_system to the charge_point",
+    "message" : "the standard operation payload according to OCPP"
+}
+```
+
+
+
+as an exemple, here is a change_availability command :
+
+```
+{
+    "op": "change_availability",
+    "message" :
+        {
+            "connector_id": 1,
+            "type": "Operative"
+        }
+}
+
+```
+
+Here is a link for OCPP 1.6 protocol : https://groups.oasis-open.org/higherlogic/ws/public/document?document_id=58944
+
 ContributingContributions are welcome! Please fork the repository and submit a pull request.
 LicenseThis project is licensed under the MIT License - see the LICENSE file for details.
 Acknowledgements- Thanks to the open-source community for their contributions.
