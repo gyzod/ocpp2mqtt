@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ocpp2mqtt-deployment
+  namespace: ocpp2mqtt
+  labels:
+    app: ocpp2mqtt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ocpp2mqtt
+  template:
+    metadata:
+      labels:
+        app: ocpp2mqtt
+    spec:
+          containers:
+            - name: ocpp2mqtt
+              image: docker.io/gyzod/ocpp2mqtt:latest
+              ports:
+                - containerPort: 3000
+                  protocol: TCP
+              env:
+                - name: MQTT_PORT
+                  value: '1883'
+                - name: MQTT_HOSTNAME
+                  value: xxx.xxx.xxx.xxx
+                - name: MQTT_BASEPATH
+                  value: ocpp/charger1
+                - name: LISTEN_PORT
+                  value: '3000'
+                - name: LISTEN_ADDR
+                  value: 0.0.0.0
+                - name: AUTHORIZED_TAG_ID_LIST
+                  value: '["xxxx-car","xxx-car"]'
+              resources: {}
+              terminationMessagePath: /dev/termination-log
+              terminationMessagePolicy: File
+              imagePullPolicy: Always
+          restartPolicy: Always
+          terminationGracePeriodSeconds: 30
+          dnsPolicy: ClusterFirst
+          securityContext: {}
+          schedulerName: default-scheduler
