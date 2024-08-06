@@ -113,6 +113,7 @@ class ChargePoint(cp):
         print('--- Started transaction in CP')
 
         await self.push_state_value_mqtt("ev_connected", "ON")
+        await self.push_state_value_mqtt("meter_start_timestamp", timestamp)
         await self.push_state_values_mqtt(**kwargs)
         
         for k,v in kwargs.items():
@@ -136,8 +137,10 @@ class ChargePoint(cp):
         print('--- Stopped transaction in CP')
 
         await self.push_state_value_mqtt("ev_connected", "OFF")
-        await self.push_state_values_mqtt(**kwargs)
-
+        await self.push_state_value_mqtt("meter_stop_timestamp", kwargs['timestamp'])
+        await self.push_state_value_mqtt("meter_stop", kwargs['meter_stop'])
+        await self.push_state_value_mqtt("meter_stop_reason", kwargs['reason'])
+        
         for k,v in kwargs.items():
             print(k, v)
 
