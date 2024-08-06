@@ -79,7 +79,7 @@ where the schema for MQTT messages is :
 
 
 
-as an exemple, here is a change_availability command :
+as an exemple, here is a change_availability command to change the charger's availability:
 
 ```
 {
