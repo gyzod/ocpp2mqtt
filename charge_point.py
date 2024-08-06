@@ -92,20 +92,19 @@ class ChargePoint(cp):
         print("--- Got a Heartbeat! ")
         await self.push_state_value_mqtt('heartbeat', 'ON')
         await self.push_state_value_mqtt('last_seen', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
-        return call_result.Heartbeat(
-            current_time=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z"
-        )
+        return call_result.Heartbeat(current_time=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
     
     @on(Action.MeterValues)
     async def on_meter_values(self, **kwargs):
         print('--- Meter values CP')
         
         for i in kwargs['meter_value'][0]['sampled_value']:
-            await self.push_state_value_mqtt((i['measurand']).replace('.','_').lower(), i['value'])
+            measure = (i['measurand']).replace('.','_').lower()
+            value = i['value']
+            await self.push_state_value_mqtt(measure, value)
 
         for k,v in kwargs.items():
             print(k, v)
-        
         
         return call_result.MeterValues()
     
