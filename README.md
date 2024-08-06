@@ -61,7 +61,12 @@ AUTHORIZED_TAG_ID_LIST='["johnny-car","other-car"]'
 
 state topics : /ocpp/[your charger]/state is where all the data sent from charge_point to the central_system is sent.
 
-cmd topic : /ocpp/[your charger]/cmd
+Here is and example of state topics : 
+
+![image](https://github.com/user-attachments/assets/cd1a1360-07e4-46e7-babe-63a899677c3a)
+
+
+To send message from the central_system to the charge_point, the following command topic must be used : /ocpp/[your charger]/cmd
 
 where the schema for MQTT messages is : 
 
@@ -88,7 +93,7 @@ as an exemple, here is a change_availability command :
 
 ```
 
-Here is a link for OCPP 1.6 protocol : https://groups.oasis-open.org/higherlogic/ws/public/document?document_id=58944
+All payload message must follow the OCPP 1.6 protocol documentation : https://groups.oasis-open.org/higherlogic/ws/public/document?document_id=58944
 
 ContributingContributions are welcome! Please fork the repository and submit a pull request.
 LicenseThis project is licensed under the MIT License - see the LICENSE file for details.
