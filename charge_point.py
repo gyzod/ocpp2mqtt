@@ -45,15 +45,15 @@ class ChargePoint(cp):
     async def on_authorize(self, id_tag: str):
         print('--- Authorize CP')
         
-        if id_tag in AUTHORIZED_TAG_ID_LIST:
-            print('--- Authorized')
+        if id_tag in AUTHORIZED_TAG_ID_LIST and self.status != "Unavailable":
+            print('--- Authorized : Tag accepted and status = ' + self.status)
             authorization=AuthorizationStatus.accepted
             self.authorized_tag_id=id_tag
         else:
-            print('--- Not Authorized')
+            print('--- Not Authorized : Tag not accepted or status = ' + self.status)
             authorization=AuthorizationStatus.blocked
             
-        await self.push_state_value_mqtt(f"authorize_{id_tag}", authorization)
+        await self.push_state_value_mqtt("authorize", authorization)
         return call_result.Authorize(id_tag_info={'status': authorization})
     
 
@@ -153,7 +153,6 @@ class ChargePoint(cp):
     async def on_stop_transaction(self,  **kwargs):
         print('--- Stopped transaction in CP')
 
-        await self.push_state_value_mqtt("ev_connected", "OFF")
         await self.push_state_value_mqtt("meter_stop_timestamp", kwargs['timestamp'])
         await self.push_state_value_mqtt("meter_stop", kwargs['meter_stop'])
         await self.push_state_value_mqtt("meter_stop_reason", kwargs['reason'])
@@ -189,9 +188,9 @@ class ChargePoint(cp):
                 self.client=client
                 await client.subscribe(f"{MQTT_BASEPATH}/cmd/#")
                 async for message in client.messages:
+                    print("MQTT msg received : ")
+                    print(message.payload)
                     msg = JSON.loads(message.payload.decode("utf-8"))
-                    print("MQTT msg: ")
-                    print(msg)
                     match msg['op']:
                         case 'cancel_reservation':
                             result = await mqtt_2_charge_point.cancel_reservation(self, msg['message'])
