@@ -32,7 +32,7 @@ def get_configuration(cp, payload):
     return cp.call(call.GetConfiguration(**payload))
 
 def get_diagnostics(cp, payload):
-        return cp.call(call.GetDiagnostics(**payload))
+    return cp.call(call.GetDiagnostics(**payload))
 
 def get_local_version(cp, payload):
     return cp.call(call.GetLocalListVersion(**payload))
@@ -59,7 +59,10 @@ def trigger_message(cp,payload):
     return cp.call(call.TriggerMessage(**payload))
 
 def unlock_connector(cp, payload):
-    return cp.call(call.UnlockConnector(**payload))
+    try:
+        return cp.call(call.UnlockConnector(**payload))
+    except Exception:
+        print("Return code not accepted, we know this is a bug in the library or in the Grizzl-e implementation")
 
 def update_firmware(cp, payload):
     return cp.call(call.UpdateFirmware(**payload))

@@ -34,6 +34,7 @@ class ChargePoint(cp):
 
     transaction_id = 0
     authorized_tag_id = ""
+    status = "Unknown"
 
     def get_transaction_id(self):
         self.transaction_id += 1
@@ -92,6 +93,12 @@ class ChargePoint(cp):
         print("--- Got a Heartbeat! ")
         await self.push_state_value_mqtt('heartbeat', 'ON')
         await self.push_state_value_mqtt('last_seen', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
+
+        if self.status != "Charging":  # set MQTT charging variables to 0 if not charging
+            await self.push_state_value_mqtt("current_import", 0)
+            await self.push_state_value_mqtt("power_active_import", 0)
+            await self.push_state_value_mqtt("energy_active_import_register", 0)
+            
         return call_result.Heartbeat(current_time=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
     
     @on(Action.MeterValues)
@@ -112,16 +119,21 @@ class ChargePoint(cp):
     async def on_start_transaction(self, connector_id: int, id_tag: str, meter_start: int, timestamp: str, **kwargs):
         print('--- Started transaction in CP')
 
-        await self.push_state_value_mqtt("ev_connected", "ON")
         await self.push_state_value_mqtt("meter_start_timestamp", timestamp)
+        await self.push_state_value_mqtt("meter_start", meter_start)
         await self.push_state_values_mqtt(**kwargs)
         
         for k,v in kwargs.items():
             print(k, v)
-        
+
+        if self.status == "Unavailable":
+            authStatus = AuthorizationStatus.blocked
+        else:
+            authStatus = AuthorizationStatus.accepted
+       
         return call_result.StartTransaction(
             transaction_id=self.get_transaction_id(),         
-            id_tag_info={'status': AuthorizationStatus.accepted}
+            id_tag_info={'status': authStatus}
         )
 
     @on(Action.StatusNotification)
@@ -129,7 +141,12 @@ class ChargePoint(cp):
         print("--- Got Status Notification")
         await self.push_state_value_mqtt('error_code', error_code)
         await self.push_state_value_mqtt('status', status)
+        await self.push_state_value_mqtt('connector_id', connector_id)
         await self.push_state_values_mqtt(**kwargs)
+
+        # local persistence of the status
+        self.status = status
+
         return call_result.StatusNotification()
     
     @on(Action.StopTransaction)
@@ -159,6 +176,10 @@ class ChargePoint(cp):
     async def push_state_value_mqtt(self, key, value):
         await self.client.publish(f"{MQTT_BASEPATH}/state/{key}", payload=value)
 
+    async def push_call_return_mqtt(self, result):
+        for k,v in result.items():
+            await self.client.publish(f"{MQTT_BASEPATH}/cmd_result/{k}", payload=v)
+
     ## received events from MQTT
     async def mqtt_listen(self):
         print("start mqtt")
@@ -173,45 +194,49 @@ class ChargePoint(cp):
                     print(msg)
                     match msg['op']:
                         case 'cancel_reservation':
-                            await mqtt_2_charge_point.cancel_reservation(self, msg['message'])
+                            result = await mqtt_2_charge_point.cancel_reservation(self, msg['message'])
                         case 'change_availability':
-                            await mqtt_2_charge_point.change_availability(self, msg['message'])
+                            result = await mqtt_2_charge_point.change_availability(self, msg['message'])
                         case 'change_configuration':
-                            await mqtt_2_charge_point.change_configuration(self, msg['message'])
+                            result = await mqtt_2_charge_point.change_configuration(self, msg['message'])
                         case 'clear_cache':
-                            await mqtt_2_charge_point.clear_cache(self, msg['message'])
+                            result = await mqtt_2_charge_point.clear_cache(self, msg['message'])
                         case 'clear_charging_profile':
-                            await mqtt_2_charge_point.clear_charging_profile(self, msg['message'])
+                            result = await mqtt_2_charge_point.clear_charging_profile(self, msg['message'])
                         case 'data_transfer':
-                            await mqtt_2_charge_point.data_transfer(self, msg['message'])
+                            result = await mqtt_2_charge_point.data_transfer(self, msg['message'])
                         case 'get_composite_schedule':
-                            await mqtt_2_charge_point.get_composite_schedule(self, msg['message'])
+                            result = await mqtt_2_charge_point.get_composite_schedule(self, msg['message'])
                         case 'get_configuration':
-                            await mqtt_2_charge_point.get_configuration(self, msg['message'])
+                            result = await mqtt_2_charge_point.get_configuration(self, msg['message'])
                         case 'get_diagnostics':
-                            await mqtt_2_charge_point.get_diagnostics(self, msg['message'])
+                            result = await mqtt_2_charge_point.get_diagnostics(self, msg['message'])
                         case 'get_local_version':
-                            await mqtt_2_charge_point.get_local_version(self, msg['message'])
+                            result = await mqtt_2_charge_point.get_local_version(self, msg['message'])
                         case 'remote_start_transaction':
-                            await mqtt_2_charge_point.remote_start_transaction(self, msg['message'])
+                            result = await mqtt_2_charge_point.remote_start_transaction(self, msg['message'])
                         case 'remote_stop_transaction':
-                            await mqtt_2_charge_point.remote_stop_transaction(self, msg['message'])
+                            result = await mqtt_2_charge_point.remote_stop_transaction(self, msg['message'])
                         case 'reserve_now':
-                            await mqtt_2_charge_point.reserve_now(self, msg['message'])
+                            result = await mqtt_2_charge_point.reserve_now(self, msg['message'])
                         case 'reset':
-                            await mqtt_2_charge_point.reset(self, msg['message'])
+                            result = await mqtt_2_charge_point.reset(self, msg['message'])
                         case 'send_local_list':
-                            await mqtt_2_charge_point.send_local_list(self, msg['message'])
+                            result = await mqtt_2_charge_point.send_local_list(self, msg['message'])
                         case 'set_charging_profile':
-                            await mqtt_2_charge_point.set_charging_profile(self, msg['message'])
+                            result = await mqtt_2_charge_point.set_charging_profile(self, msg['message'])
                         case 'trigger_message':
-                            await mqtt_2_charge_point.trigger_message(self, msg['message'])
+                            result = await mqtt_2_charge_point.trigger_message(self, msg['message'])
                         case 'unlock_connector':
-                            await mqtt_2_charge_point.unlock_connector(self, msg['message'])
+                            result = await mqtt_2_charge_point.unlock_connector(self, msg['message'])
                         case 'update_firmware':
-                            await mqtt_2_charge_point.update_firmware(self, msg['message'])
+                            result = await mqtt_2_charge_point.update_firmware(self, msg['message'])
                         case _:
-                            print("Operation not found")                    
+                            print("Operation not found")  
+                            result = None
+                    if result is not None:
+                        await self.push_call_return_mqtt(vars(result))
+                                          
         except MqttError as e:
             print("MQTT error: " + str(e))
             raise e
