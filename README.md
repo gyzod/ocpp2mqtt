@@ -142,6 +142,9 @@ Thing mqtt:topic:ocpp:grizzle "Grizzl-e charger" (mqtt:broker:myUnsecureBroker) 
 }
 ```
 
+## Notes
+
+Please note that this has only been tested with a Grizzl-e Chargepoint.
 
 All payload message must follow the OCPP 1.6 protocol documentation : https://groups.oasis-open.org/higherlogic/ws/public/document?document_id=58944
 
