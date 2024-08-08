@@ -11,8 +11,10 @@ ocpp2mqtt is a gateway software that converts OCPP (Open Charge Point Protocol) 
 
 ## Prerequisites
 
-- Docker or Kubernetes or any container orchestrater (optional)
+This can operate in containerized mode or in normal mode.
+
 - Python 3.8 or higher
+- Docker or Kubernetes or any container orchestrater (optional)
 
 ## Installation
 
@@ -22,8 +24,14 @@ ocpp2mqtt is a gateway software that converts OCPP (Open Charge Point Protocol) 
     git clone https://github.com/gyzod/ocpp2mqtt.git
     cd ocpp2mqtt
     ```
+2a. Start the python script:
 
-2. Build and run the Docker container:
+    ```bash
+    python central_system.py
+    ```
+or
+
+2b. Build and run the Docker container:
 
     ```bash
     docker build .
