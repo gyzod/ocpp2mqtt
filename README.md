@@ -20,23 +20,23 @@ This can operate in containerized mode or in normal mode.
 
 1. Clone the repository:
 
-    ```bash
-    git clone https://github.com/gyzod/ocpp2mqtt.git
-    cd ocpp2mqtt
-    ```
+```bash
+git clone https://github.com/gyzod/ocpp2mqtt.git
+cd ocpp2mqtt
+```
 
 2a. Start the python script:
 
-    ```bash
-    python central_system.py
-    ```
+```bash
+python central_system.py
+```
 or
 
 2b. Build and run the Docker container:
 
-    ```bash
-    docker build .
-    ```
+```bash
+docker build .
+```
 
 ## Usage
 
