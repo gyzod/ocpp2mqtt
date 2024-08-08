@@ -25,14 +25,14 @@ git clone https://github.com/gyzod/ocpp2mqtt.git
 cd ocpp2mqtt
 ```
 
-2a. Start the python script:
+2. Start the python script:
 
 ```bash
 python central_system.py
 ```
-or
+OR
 
-2b. Build and run the Docker container:
+2. Build and run the Docker container:
 
 ```bash
 docker build .
