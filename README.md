@@ -20,23 +20,21 @@ This can operate in containerized mode or in normal mode.
 
 1. Clone the repository:
 
-```bash
-git clone https://github.com/gyzod/ocpp2mqtt.git
-cd ocpp2mqtt
-```
+    ```bash
+    git clone https://github.com/gyzod/ocpp2mqtt.git
+    cd ocpp2mqtt
+    ```
 
-2. Setup requirements : 
+2. Build 
 
-```bash
-pip install -r requirements.txt
-```
-OR
-
-2. Build and run the Docker container:
-
-```bash
-docker build .
-```
+    ```bash
+    pip install -r requirements.txt
+    ```
+    OR
+    
+    ```bash
+    docker build .
+    ```
 
 ## Usage
 
