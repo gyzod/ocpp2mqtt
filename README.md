@@ -25,10 +25,10 @@ git clone https://github.com/gyzod/ocpp2mqtt.git
 cd ocpp2mqtt
 ```
 
-2. Start the python script:
+2. Setup requirements : 
 
 ```bash
-python central_system.py
+pip install -r requirements.txt
 ```
 OR
 
@@ -47,8 +47,13 @@ docker build .
     ```bash
     docker run
     ```
+    or
+   
+    ```bash
+    python central_system.py
+    ```
 
-3. The application will start listening for OCPP and MQTT requests and convert them to MQTT or OCPP messages.
+4. The application will start listening for OCPP and MQTT requests and convert them to MQTT or OCPP messages.
 
 ## Configuration
 
