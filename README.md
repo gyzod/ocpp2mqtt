@@ -24,6 +24,7 @@ This can operate in containerized mode or in normal mode.
     git clone https://github.com/gyzod/ocpp2mqtt.git
     cd ocpp2mqtt
     ```
+
 2a. Start the python script:
 
     ```bash
