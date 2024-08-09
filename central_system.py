@@ -31,6 +31,7 @@ load_dotenv(verbose=True)
 LISTEN_ADDR=os.getenv('LISTEN_ADDR') # 0.0.0.0 for localhost
 LISTEN_PORT=int(os.getenv('LISTEN_PORT')) # 9000
 
+
 async def on_connect(websocket, path):
     """For every new charge point that connects, create a ChargePoint
     instance and start listening for messages.
@@ -58,7 +59,7 @@ async def on_connect(websocket, path):
     cpSession = ChargePoint(charge_point_id, websocket)
     cpSession.heartbeat = 0
 
-    await asyncio.gather( cpSession.start(), cpSession.mqtt_listen())
+    await asyncio.gather(cpSession.mqtt_listen(), cpSession.start())
 
     print("Chargepoint session instance successfully created")
 

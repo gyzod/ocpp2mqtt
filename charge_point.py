@@ -1,16 +1,12 @@
-# OCPP server with ability to send commands by mqtt
-# for home automation projects
-# based on : https://github.com/rzylius/ocpp-mqtt
-
 import logging
+import os
+import json as JSON
+import mqtt_2_charge_point 
+
+from dotenv import load_dotenv
 from datetime import datetime
 from aiomqtt import Client
 from aiomqtt import MqttError
-import sys
-import os
-from dotenv import load_dotenv
-import json as JSON
-import mqtt_2_charge_point 
 
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint as cp
@@ -23,18 +19,23 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv(verbose=True)
 MQTT_HOSTNAME=os.getenv('MQTT_HOSTNAME')
 MQTT_PORT=int(os.getenv('MQTT_PORT'))
-
 MQTT_BASEPATH=os.getenv('MQTT_BASEPATH')
 
 # specify the tag_ID which is authorized in the charge station. 
 # Remote server has to send to CP authorised ID in order to start charging
 AUTHORIZED_TAG_ID_LIST=JSON.loads(os.getenv('AUTHORIZED_TAG_ID_LIST'))
 
+# global variable for all charge points
+charging_enabled = "OFF"
+
 class ChargePoint(cp):
 
     transaction_id = 0
     authorized_tag_id = ""
     status = "Unknown"
+
+    def is_charging_enabled(self):
+        return (charging_enabled == "ON")
 
     def get_transaction_id(self):
         self.transaction_id += 1
@@ -45,13 +46,13 @@ class ChargePoint(cp):
     async def on_authorize(self, id_tag: str):
         print('--- Authorize CP')
         
-        if id_tag in AUTHORIZED_TAG_ID_LIST and self.status != "Unavailable":
-            print('--- Authorized : Tag accepted and status = ' + self.status)
+        if id_tag in AUTHORIZED_TAG_ID_LIST and self.is_charging_enabled():
             authorization=AuthorizationStatus.accepted
             self.authorized_tag_id=id_tag
         else:
-            print('--- Not Authorized : Tag not accepted or status = ' + self.status)
             authorization=AuthorizationStatus.blocked
+
+        print('--- Authorize result : ' + authorization)
             
         await self.push_state_value_mqtt("authorize", authorization)
         return call_result.Authorize(id_tag_info={'status': authorization})
@@ -126,13 +127,14 @@ class ChargePoint(cp):
         for k,v in kwargs.items():
             print(k, v)
 
-        if self.status == "Unavailable":
-            authStatus = AuthorizationStatus.blocked
-        else:
+        if self.is_charging_enabled():
             authStatus = AuthorizationStatus.accepted
+        else:
+            authStatus = AuthorizationStatus.blocked
+
+        print('--- Start transaction response = ' + authStatus)
        
         return call_result.StartTransaction(
-            transaction_id=self.get_transaction_id(),         
             id_tag_info={'status': authStatus}
         )
 
@@ -192,6 +194,10 @@ class ChargePoint(cp):
                     print(message.payload)
                     msg = JSON.loads(message.payload.decode("utf-8"))
                     match msg['op']:
+                        case 'charging_enabled':  #logical master switch
+                            global charging_enabled
+                            charging_enabled = msg['message']
+                            result = None
                         case 'cancel_reservation':
                             result = await mqtt_2_charge_point.cancel_reservation(self, msg['message'])
                         case 'change_availability':
