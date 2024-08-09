@@ -84,8 +84,8 @@ where the schema for MQTT messages is :
 
 ```
 {
-    "op": "the operation from the central_system to the charge_point",
-    "message" : "the standard operation payload according to OCPP"
+    "action": "the operation from the central_system to the charge_point",
+    "args" : "the standard operation payload according to OCPP"
 }
 ```
 
@@ -95,8 +95,8 @@ as an exemple, here is a change_availability command to change the charger's ava
 
 ```
 {
-    "op": "change_availability",
-    "message" :
+    "action": "change_availability",
+    "args" :
         {
             "connector_id": 1,
             "type": "Operative"
