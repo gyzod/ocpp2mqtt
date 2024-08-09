@@ -11,8 +11,10 @@ ocpp2mqtt is a gateway software that converts OCPP (Open Charge Point Protocol) 
 
 ## Prerequisites
 
-- Docker or Kubernetes or any container orchestrater (optional)
+This can operate in containerized mode or in normal mode.
+
 - Python 3.8 or higher
+- Docker or Kubernetes or any container orchestrater (optional)
 
 ## Installation
 
@@ -23,8 +25,13 @@ ocpp2mqtt is a gateway software that converts OCPP (Open Charge Point Protocol) 
     cd ocpp2mqtt
     ```
 
-2. Build and run the Docker container:
+2. Build 
 
+    ```bash
+    pip install -r requirements.txt
+    ```
+    OR
+    
     ```bash
     docker build .
     ```
@@ -38,8 +45,13 @@ ocpp2mqtt is a gateway software that converts OCPP (Open Charge Point Protocol) 
     ```bash
     docker run
     ```
+    or
+   
+    ```bash
+    python central_system.py
+    ```
 
-3. The application will start listening for OCPP and MQTT requests and convert them to MQTT or OCPP messages.
+4. The application will start listening for OCPP and MQTT requests and convert them to MQTT or OCPP messages.
 
 ## Configuration
 
@@ -92,6 +104,47 @@ as an exemple, here is a change_availability command to change the charger's ava
 }
 
 ```
+## Openhab integration
+
+Obviously, as this allows OCPP to be exposed via MQTT, it becomes easy to integrate it into any home automation system. Here is an example of integration with Openhab using the following .thing file:
+
+```
+Thing mqtt:topic:ocpp:grizzle "Grizzl-e charger" (mqtt:broker:myUnsecureBroker) [ availabilityTopic="ocpp/charger1/state/heartbeat" ] {
+    Channels:
+        Type switch : heartbeat                     "heartbeat"                     [ stateTopic = "ocpp/charger1/state/heartbeat" ]
+        Type datetime : last_seen                   "last_seen"                     [ stateTopic = "ocpp/charger1/state/last_seen" ]
+        Type string : charge_point_vendor           "charge_point_vendor"           [ stateTopic = "ocpp/charger1/state/charge_point_vendor" ]
+        Type string : charge_point_model            "charge_point_model"            [ stateTopic = "ocpp/charger1/state/charge_point_model" ]
+        Type string : charge_point_serial_number    "charge_point_serial_number"    [ stateTopic = "ocpp/charger1/state/charge_point_serial_number" ]
+        Type string : firmware_version              "firmware_version"              [ stateTopic = "ocpp/charger1/state/firmware_version" ]
+        Type string : error_code                    "error_code"                    [ stateTopic = "ocpp/charger1/state/error_code" ]
+        Type string : status                        "status"                        [ stateTopic = "ocpp/charger1/state/status" ]
+        Type string : meter_type                    "meter_type"                    [ stateTopic = "ocpp/charger1/state/meter_type" ]
+        Type number : current_import                "current_import"                [ stateTopic = "ocpp/charger1/state/current_import" ]
+        Type number : voltage                       "voltage"                       [ stateTopic = "ocpp/charger1/state/voltage" ]
+        Type number : power_active_import           "power_active_import"           [ stateTopic = "ocpp/charger1/state/power_active_import" ]
+        Type number : energy_active_import_register "energy_active_import_register" [ stateTopic = "ocpp/charger1/state/energy_active_import_register" ]
+        Type string : reason                        "reason"                        [ stateTopic = "ocpp/charger1/state/reason" ]
+
+        Type number : meter_start                   "meter_start"                   [ stateTopic = "ocpp/charger1/state/meter_start" ]
+        Type datetime : meter_start_timestamp       "meter_start_timestamp"         [ stateTopic = "ocpp/charger1/state/meter_start_timestamp" ]	
+        Type number : meter_stop                    "meter_stop"                    [ stateTopic = "ocpp/charger1/state/meter_stop" ]
+        Type datetime : meter_stop_timestamp        "meter_stop_timestamp"          [ stateTopic = "ocpp/charger1/state/meter_stop_timestamp" ]
+        Type string : meter_stop_reason             "meter_stop_reason"             [ stateTopic = "ocpp/charger1/state/meter_stop_reason" ]
+        
+        Type number : meter_diff                    "meter_diff"    
+        Type number : meter_cost                    "meter_cost"    
+
+        Type string : operation                     "operation"                     //True command channel
+        Type string : cmd                           "cmd"                           [ stateTopic = "ocpp/charger1/cmd" ]
+        Type string : cmd_result                    "cmd_result"                    [ stateTopic = "ocpp/charger1/cmd_result/status" ]   
+        
+}
+```
+
+## Notes
+
+Please note that this has only been tested with a Grizzl-e Chargepoint.
 
 All payload message must follow the OCPP 1.6 protocol documentation : https://groups.oasis-open.org/higherlogic/ws/public/document?document_id=58944
 
