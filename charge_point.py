@@ -245,8 +245,10 @@ class ChargePoint(cp):
                                           
         except MqttError as e:
             print("MQTT error: " + str(e))
+            raise e
         except Exception as e:
             print("Error: " + str(e))
+            raise e
         
     def get_args(self,msg):
         if 'args' in msg:
