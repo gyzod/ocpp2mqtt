@@ -33,9 +33,10 @@ class ChargePoint(cp):
     transaction_id = 0
     authorized_tag_id = ""
     status = "Unknown"
+    charging_enabled = "OFF"
 
     def is_charging_enabled(self):
-        return (charging_enabled == "ON")
+        return (self.charging_enabled == "ON")
 
     def get_transaction_id(self):
         self.transaction_id += 1
@@ -44,15 +45,19 @@ class ChargePoint(cp):
     #Received events from the charge point
     @on(Action.Authorize)
     async def on_authorize(self, id_tag: str):
-        print('--- Authorize CP')
+        print('---> Starting authorize process')
         
-        if id_tag in AUTHORIZED_TAG_ID_LIST and self.is_charging_enabled():
+        acceptedTag = (id_tag in AUTHORIZED_TAG_ID_LIST)
+
+        if acceptedTag and self.is_charging_enabled():
             authorization=AuthorizationStatus.accepted
             self.authorized_tag_id=id_tag
         else:
             authorization=AuthorizationStatus.blocked
 
-        print('--- Authorize result : ' + authorization)
+        print('---> Charging enabled : ', self.is_charging_enabled())
+        print('---> Authorize tag accepted : ', acceptedTag)
+        print('---> Authorize result : ', authorization)
             
         await self.push_state_value_mqtt("authorize", authorization)
         return call_result.Authorize(id_tag_info={'status': authorization})
@@ -60,7 +65,7 @@ class ChargePoint(cp):
 
     @on(Action.BootNotification)
     async def on_boot_notification(self, charge_point_vendor: str, charge_point_model: str, **kwargs):
-        print('--- Boot Notification')
+        print('---> Boot Notification')
         await self.push_state_value_mqtt("charge_point_vendor", charge_point_vendor)
         await self.push_state_value_mqtt("charge_point_model", charge_point_model)
         await self.push_state_values_mqtt(**kwargs)
@@ -73,25 +78,25 @@ class ChargePoint(cp):
     
     @on(Action.DataTransfer)
     async def on_data_transfer(self, **kwargs):
-        print("--- Got Data Transfer")
+        print("---> Data Transfer")
         await self.push_state_values_mqtt(self, **kwargs)
         #return not implemented
 
     @on(Action.DiagnosticsStatusNotification)
     async def on_diagnostics_status_notification(self, **kwargs):
-        print("--- Got DiagnosticsStatusNotification")
+        print("---> DiagnosticsStatusNotification")
         await self.push_state_values_mqtt(**kwargs)
         return call_result.DiagnosticsStatusNotification()
 
     @on(Action.FirmwareStatusNotification)
     async def on_firmware_status_notification(self, **kwargs):
-        print("--- Got FirmwareStatusNotification")
+        print("---> FirmwareStatusNotification")
         await self.push_state_values_mqtt(**kwargs)
         return call_result.FirmwareStatusNotification()
 
     @on(Action.Heartbeat)
     async def on_heartbeat(self):
-        print("--- Got a Heartbeat! ")
+        print("---> Heartbeat ")
         await self.push_state_value_mqtt('heartbeat', 'ON')
         await self.push_state_value_mqtt('last_seen', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
 
@@ -104,7 +109,7 @@ class ChargePoint(cp):
     
     @on(Action.MeterValues)
     async def on_meter_values(self, **kwargs):
-        print('--- Meter values CP')
+        print('---> Meter values')
         
         for i in kwargs['meter_value'][0]['sampled_value']:
             measure = (i['measurand']).replace('.','_').lower()
@@ -118,7 +123,7 @@ class ChargePoint(cp):
     
     @on(Action.StartTransaction)
     async def on_start_transaction(self, connector_id: int, id_tag: str, meter_start: int, timestamp: str, **kwargs):
-        print('--- Started transaction in CP')
+        print('---> Start transaction')
 
         await self.push_state_value_mqtt("meter_start_timestamp", timestamp)
         await self.push_state_value_mqtt("meter_start", meter_start)
@@ -132,16 +137,17 @@ class ChargePoint(cp):
         else:
             authStatus = AuthorizationStatus.blocked
 
-        print('--- Start transaction response = ' + authStatus)
-       
+        print('---> Charging enabled : ', self.is_charging_enabled())
+        print('---> Start transaction result : ', authStatus)
+               
         return call_result.StartTransaction(
             id_tag_info={'status': authStatus},
-            transactionId=self.get_transaction_id()
+            transaction_id=self.get_transaction_id()
         )
 
     @on(Action.StatusNotification)
     async def on_status_notification(self, connector_id: int, error_code: str, status: str, **kwargs):
-        print("--- Got Status Notification")
+        print("---> Status Notification")
         await self.push_state_value_mqtt('error_code', error_code)
         await self.push_state_value_mqtt('status', status)
         await self.push_state_value_mqtt('connector_id', connector_id)
@@ -154,7 +160,7 @@ class ChargePoint(cp):
     
     @on(Action.StopTransaction)
     async def on_stop_transaction(self,  **kwargs):
-        print('--- Stopped transaction in CP')
+        print('---> Stopped transaction')
 
         await self.push_state_value_mqtt("meter_stop_timestamp", kwargs['timestamp'])
         await self.push_state_value_mqtt("meter_stop", kwargs['meter_stop'])
@@ -168,9 +174,7 @@ class ChargePoint(cp):
         )
    
     # MQTT implementation
-
     ## MQTT publish
-
     async def push_state_values_mqtt(self,**kwargs):
         for k,v in kwargs.items():
             await self.client.publish(f"{MQTT_BASEPATH}/state/{k}", payload=v)
@@ -184,20 +188,19 @@ class ChargePoint(cp):
 
     ## received events from MQTT
     async def mqtt_listen(self):
-        print("start mqtt")
+        print("Starting MQTT loop...")
 
         try:
             async with Client(hostname=MQTT_HOSTNAME,port=MQTT_PORT) as client:
                 self.client=client
                 await client.subscribe(f"{MQTT_BASEPATH}/cmd/#")
                 async for message in client.messages:
-                    print("MQTT msg received : ")
-                    print(message.payload)
+                    print("<-- MQTT msg received : ", message.payload)
                     msg = JSON.loads(message.payload.decode("utf-8"))
                     match msg['action']:
                         case 'charging_enabled':  #logical master switch
-                            global charging_enabled
-                            charging_enabled = self.get_args(msg)
+                            self.charging_enabled = self.get_args(msg)
+                            print("<-- Charging enabled : ", self.charging_enabled)
                             result = None
                         case 'cancel_reservation':
                             result = await mqtt_2_charge_point.cancel_reservation(self, self.get_args(msg))
