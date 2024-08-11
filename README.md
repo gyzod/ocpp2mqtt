@@ -147,8 +147,8 @@ Thing mqtt:topic:ocpp:grizzle "Grizzl-e charger" (mqtt:broker:myUnsecureBroker) 
 Please note that this has only been tested with a Grizzl-e Smart Chargepoint.
 
 For this specific chargepoint to work, I had to change 2 configuration items using the change_configuration mqtt action with the following args :   
-- {"action": "change_configuration", "args": {"key": "StartChargingAfterConnect", "value" : "false"}
-- {"action": "change_configuration", "args": {"key": "StopTransactionOnInvalid", "value" : "true"}
+- {"action": "change_configuration", "args": {"key": "StartChargingAfterConnect", "value" : "false"}}
+- {"action": "change_configuration", "args": {"key": "StopTransactionOnInvalid", "value" : "true"}}
 
 
 All payload message must follow the OCPP 1.6 protocol documentation : https://groups.oasis-open.org/higherlogic/ws/public/document?document_id=58944

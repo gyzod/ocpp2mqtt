@@ -24,25 +24,25 @@ MQTT_BASEPATH=os.getenv('MQTT_BASEPATH')
 # specify the tag_ID which is authorized in the charge station. 
 # Remote server has to send to CP authorised ID in order to start charging
 AUTHORIZED_TAG_ID_LIST=JSON.loads(os.getenv('AUTHORIZED_TAG_ID_LIST'))
-
 # global variable for all charge points
 charging_enabled = "OFF"
 
 class ChargePoint(cp):
 
-    transaction_id = 0
+    transaction_id = 1
     authorized_tag_id = ""
     status = "Unknown"
-    charging_enabled = "OFF"
-
+        
     def is_charging_enabled(self):
-        return (self.charging_enabled == "ON")
+        global charging_enabled
+        return (charging_enabled == "ON")
 
     def get_transaction_id(self):
-        self.transaction_id += 1
+        #self.transaction_id += 1
         return self.transaction_id
 
     #Received events from the charge point
+
     @on(Action.Authorize)
     async def on_authorize(self, id_tag: str):
         print('---> Starting authorize process')
@@ -70,6 +70,7 @@ class ChargePoint(cp):
         await self.push_state_value_mqtt("charge_point_model", charge_point_model)
         await self.push_state_values_mqtt(**kwargs)
 
+               
         return call_result.BootNotification(
             current_time=datetime.utcnow().isoformat(),
             interval=10,
@@ -99,11 +100,6 @@ class ChargePoint(cp):
         print("---> Heartbeat ")
         await self.push_state_value_mqtt('heartbeat', 'ON')
         await self.push_state_value_mqtt('last_seen', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
-
-        # if self.status != "Charging":  # set MQTT charging variables to 0 if not charging
-        #     await self.push_state_value_mqtt("current_import", 0)
-        #     await self.push_state_value_mqtt("power_active_import", 0)
-        #     await self.push_state_value_mqtt("energy_active_import_register", 0)
             
         return call_result.Heartbeat(current_time=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
     
@@ -188,6 +184,7 @@ class ChargePoint(cp):
 
     ## received events from MQTT
     async def mqtt_listen(self):
+        
         print("Starting MQTT loop...")
 
         try:
@@ -199,8 +196,9 @@ class ChargePoint(cp):
                     msg = JSON.loads(message.payload.decode("utf-8"))
                     match msg['action']:
                         case 'charging_enabled':  #logical master switch
-                            self.charging_enabled = self.get_args(msg)
-                            print("<-- Charging enabled : ", self.charging_enabled)
+                            global charging_enabled
+                            charging_enabled = self.get_args(msg)
+                            print("<-- Charging enabled : ", charging_enabled)
                             result = None
                         case 'cancel_reservation':
                             result = await mqtt_2_charge_point.cancel_reservation(self, self.get_args(msg))
@@ -243,8 +241,12 @@ class ChargePoint(cp):
                         case _:
                             print("Action not found")  
                             result = None
-                    if result is not None:
-                        await self.push_call_return_mqtt(vars(result))
+                    if result:
+                        print("--> MQTT result : ", result)
+                        try:
+                            await self.push_call_return_mqtt(vars(result))
+                        except Exception as e:
+                            print("Error publishing call result to MQTT : " + str(e))
                                           
         except MqttError as e:
             print("MQTT error: " + str(e))

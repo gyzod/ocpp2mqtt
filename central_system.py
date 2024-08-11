@@ -58,7 +58,7 @@ async def on_connect(websocket, path):
     charge_point_id = path.strip("/")
     cpSession = ChargePoint(charge_point_id, websocket)
     cpSession.heartbeat = 0
-
+    
     await asyncio.gather(cpSession.mqtt_listen(), cpSession.start())
 
     print("Chargepoint session instance successfully created")
