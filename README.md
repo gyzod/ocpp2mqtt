@@ -150,6 +150,11 @@ For this specific chargepoint to work, I had to change 2 configuration items usi
 - {"action": "change_configuration", "args": {"key": "StartChargingAfterConnect", "value" : "false"}}
 - {"action": "change_configuration", "args": {"key": "StopTransactionOnInvalid", "value" : "true"}}
 
+Also, if you want to customize the ocpp repo, git clone it on the main folder, the dockerfile will detect it and deploy it over the ocpp default pip requirement.
+
+```
+git clone https://github.com/mobilityhouse/ocpp
+```
 
 All payload message must follow the OCPP 1.6 protocol documentation : https://groups.oasis-open.org/higherlogic/ws/public/document?document_id=58944
 
