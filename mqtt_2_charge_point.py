@@ -59,10 +59,7 @@ def trigger_message(cp,payload):
     return cp.call(call.TriggerMessage(**payload))
 
 def unlock_connector(cp, payload):
-    try:
-        return cp.call(call.UnlockConnector(**payload))
-    except Exception:
-        print("Return code not accepted, we know this is a bug in the library or in the Grizzl-e implementation")
+    return cp.call(call.UnlockConnector(**payload))
 
 def update_firmware(cp, payload):
     return cp.call(call.UpdateFirmware(**payload))

@@ -9,7 +9,10 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-RUN pip install -r /app/requirements.txt
+RUN pip install -r requirements.txt
+
+# Install OCPP library from local source if present
+RUN test -d ./ocpp && pip install ./ocpp
 
 # Command to run the Python script
 CMD ["python", "/app/central_system.py"]
