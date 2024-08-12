@@ -1,9 +1,6 @@
 import logging
 
-#from ocpp.v16 import ChargePoint as cp
-from ocpp.v16.enums import AuthorizationStatus, Action, RegistrationStatus, RemoteStartStopStatus, MessageTrigger, AvailabilityType
-from ocpp.v16.enums import AvailabilityStatus, ResetStatus, CancelReservationStatus
-from ocpp.v16 import call_result, call
+from ocpp.v16 import call
 
 logging.basicConfig(level=logging.INFO)
 

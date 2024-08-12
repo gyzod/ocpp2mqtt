@@ -10,9 +10,8 @@ from aiomqtt import MqttError
 
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint as cp
-from ocpp.v16.enums import AuthorizationStatus, Action, RegistrationStatus, RemoteStartStopStatus, MessageTrigger, AvailabilityType
-from ocpp.v16.enums import AvailabilityStatus, ResetStatus
-from ocpp.v16 import call_result, call
+from ocpp.v16.enums import AuthorizationStatus, Action, RegistrationStatus
+from ocpp.v16 import call_result
 
 logging.basicConfig(level=logging.INFO)
 
@@ -184,9 +183,7 @@ class ChargePoint(cp):
 
     ## received events from MQTT
     async def mqtt_listen(self):
-        
         print("Starting MQTT loop...")
-
         try:
             async with Client(hostname=MQTT_HOSTNAME,port=MQTT_PORT) as client:
                 self.client=client
