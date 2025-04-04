@@ -61,6 +61,8 @@ Edit or create the `.env` file to set your OCPP and MQTT parameters:
 MQTT_PORT=1883
 MQTT_HOSTNAME=xxx.xxx.xxx.xxx
 MQTT_BASEPATH='ocpp/chargerX'
+MQTT_USERNAME=
+MQTT_PASSWORD=
 
 LISTEN_PORT=3000
 LISTEN_ADDR=0.0.0.0
