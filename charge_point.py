@@ -187,7 +187,7 @@ class ChargePoint(cp):
     async def mqtt_listen(self):
         print("Starting MQTT loop...")
         try:
-            async with Client(hostname=MQTT_HOSTNAME,port=MQTT_PORT, user=MQTT_USERNAME, password=MQTT_PASSWORD) as client:
+            async with Client(hostname=MQTT_HOSTNAME,port=MQTT_PORT, username=MQTT_USERNAME, password=MQTT_PASSWORD) as client:
                 self.client=client
                 await client.subscribe(f"{MQTT_BASEPATH}/cmd/#")
                 async for message in client.messages:
