@@ -44,7 +44,7 @@ class ChargePoint(cp):
 
     #Received events from the charge point
 
-    @on(Action.Authorize)
+    @on(Action.authorize)
     async def on_authorize(self, id_tag: str):
         print('---> Starting authorize process')
         
@@ -64,7 +64,7 @@ class ChargePoint(cp):
         return call_result.Authorize(id_tag_info={'status': authorization})
     
 
-    @on(Action.BootNotification)
+    @on(Action.boot_notification)
     async def on_boot_notification(self, charge_point_vendor: str, charge_point_model: str, **kwargs):
         print('---> Boot Notification')
         await self.push_state_value_mqtt("charge_point_vendor", charge_point_vendor)
@@ -78,25 +78,25 @@ class ChargePoint(cp):
             status=RegistrationStatus.accepted,
         )
     
-    @on(Action.DataTransfer)
+    @on(Action.data_transfer)
     async def on_data_transfer(self, **kwargs):
         print("---> Data Transfer")
         await self.push_state_values_mqtt(self, **kwargs)
         #return not implemented
 
-    @on(Action.DiagnosticsStatusNotification)
+    @on(Action.diagnostics_status_notification)
     async def on_diagnostics_status_notification(self, **kwargs):
         print("---> DiagnosticsStatusNotification")
         await self.push_state_values_mqtt(**kwargs)
         return call_result.DiagnosticsStatusNotification()
 
-    @on(Action.FirmwareStatusNotification)
+    @on(Action.firmware_status_notification)
     async def on_firmware_status_notification(self, **kwargs):
         print("---> FirmwareStatusNotification")
         await self.push_state_values_mqtt(**kwargs)
         return call_result.FirmwareStatusNotification()
 
-    @on(Action.Heartbeat)
+    @on(Action.heartbeat)
     async def on_heartbeat(self):
         print("---> Heartbeat ")
         await self.push_state_value_mqtt('heartbeat', 'ON')
@@ -104,7 +104,7 @@ class ChargePoint(cp):
             
         return call_result.Heartbeat(current_time=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
     
-    @on(Action.MeterValues)
+    @on(Action.meter_values)
     async def on_meter_values(self, **kwargs):
         print('---> Meter values')
         
@@ -118,7 +118,7 @@ class ChargePoint(cp):
         
         return call_result.MeterValues()
     
-    @on(Action.StartTransaction)
+    @on(Action.start_transaction)
     async def on_start_transaction(self, connector_id: int, id_tag: str, meter_start: int, timestamp: str, **kwargs):
         print('---> Start transaction')
 
@@ -142,7 +142,7 @@ class ChargePoint(cp):
             transaction_id=self.get_transaction_id()
         )
 
-    @on(Action.StatusNotification)
+    @on(Action.status_notification)
     async def on_status_notification(self, connector_id: int, error_code: str, status: str, **kwargs):
         print("---> Status Notification")
         await self.push_state_value_mqtt('error_code', error_code)
@@ -155,7 +155,7 @@ class ChargePoint(cp):
 
         return call_result.StatusNotification()
     
-    @on(Action.StopTransaction)
+    @on(Action.stop_transaction)
     async def on_stop_transaction(self,  **kwargs):
         print('---> Stopped transaction')
 
