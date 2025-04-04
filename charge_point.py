@@ -19,6 +19,8 @@ load_dotenv(verbose=True)
 MQTT_HOSTNAME=os.getenv('MQTT_HOSTNAME')
 MQTT_PORT=int(os.getenv('MQTT_PORT'))
 MQTT_BASEPATH=os.getenv('MQTT_BASEPATH')
+MQTT_USERNAME=os.getenv('MQTT_USERNAME', None)
+MQTT_PASSWORD=os.getenv('MQTT_PASSWORD', None)
 
 # specify the tag_ID which is authorized in the charge station. 
 # Remote server has to send to CP authorised ID in order to start charging
@@ -185,7 +187,7 @@ class ChargePoint(cp):
     async def mqtt_listen(self):
         print("Starting MQTT loop...")
         try:
-            async with Client(hostname=MQTT_HOSTNAME,port=MQTT_PORT) as client:
+            async with Client(hostname=MQTT_HOSTNAME,port=MQTT_PORT, user=MQTT_USERNAME, password=MQTT_PASSWORD) as client:
                 self.client=client
                 await client.subscribe(f"{MQTT_BASEPATH}/cmd/#")
                 async for message in client.messages:
