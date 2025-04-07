@@ -7,6 +7,7 @@ import asyncio
 import logging
 import sys
 import os
+import urllib.parse
 from dotenv import load_dotenv
 import signal
 
@@ -32,12 +33,17 @@ LISTEN_ADDR=os.getenv('LISTEN_ADDR') # 0.0.0.0 for localhost
 LISTEN_PORT=int(os.getenv('LISTEN_PORT')) # 9000
 
 
-async def on_connect(websocket, path):
+async def on_connect(websocket: websockets.ServerConnection):
+
+    logging.info("Received new connection from %s, path=%s", websocket.remote_address, websocket.request.path)
+    query_string = websocket.request.path.split("?", 1)[1]  # Gets "station=GRS-1700004a35c"
+    query = urllib.parse.parse_qs(query_string)
+
     """For every new charge point that connects, create a ChargePoint
     instance and start listening for messages.
     """
     try:
-        requested_protocols = websocket.request_headers["Sec-WebSocket-Protocol"]
+        requested_protocols = websocket.request.headers["Sec-WebSocket-Protocol"]
     except KeyError:
         logging.error("Client hasn't requested any Subprotocol. Closing Connection")
         return await websocket.close()
@@ -55,7 +61,11 @@ async def on_connect(websocket, path):
         )
         return await websocket.close()
 
-    charge_point_id = path.strip("/")
+
+    charge_point_id = query.get("station", [None])[0]
+
+    logging.info("Charge Point ID: %s", charge_point_id)
+
     cpSession = ChargePoint(charge_point_id, websocket)
     cpSession.heartbeat = 0
     
