@@ -17,4 +17,3 @@ RUN pip install -r requirements.txt
 
 # Command to run the Python script
 CMD ["python", "/app/central_system.py"]
-
