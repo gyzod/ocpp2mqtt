@@ -181,22 +181,16 @@ class ChargePoint(cp):
     ## MQTT publish
     async def push_state_values_mqtt(self,**kwargs):
         mqtt_path = self.get_mqttpath()
-        print("path1: ", mqtt_path)
         for k,v in kwargs.items():    
-            print("value1: ", k)
             await self.client.publish(f"{mqtt_path}/state/{k}", payload=v)
 
     async def push_state_value_mqtt(self, key, value):
         mqtt_path = self.get_mqttpath()
-        print("path2: ", mqtt_path)
-        print("value2: ", key)
         await self.client.publish(f"{mqtt_path}/state/{key}", payload=value)
 
     async def push_call_return_mqtt(self, result):
         mqtt_path = self.get_mqttpath()
-        print("path3: ", mqtt_path)
         for k,v in result.items():
-            print("value3: ", k)
             await self.client.publish(f"{mqtt_path}/cmd_result/{k}", payload=v)
 
     ## received events from MQTT
