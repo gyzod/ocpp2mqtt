@@ -55,6 +55,7 @@ This can operate in containerized mode or in normal mode.
 
 ## Configuration
 | Name | Value | Description |
+| --- | --- | --- |
 | MQTT_PORT | 1883 | Port used for MQTT |
 | MQTT_HOSTNAME | xxx.xxx.xxx.xxx | MQTT server ip address |
 | MQTT_BASEPATH | 'ocpp/chargerX' | Basepath to use for mqtt. State and command will be after that |
