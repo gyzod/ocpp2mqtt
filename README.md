@@ -55,6 +55,18 @@ This can operate in containerized mode or in normal mode.
 
 ## Configuration
 
+Variable that can be used either in docker or using a .env
+| Name | Value | Description |
+| MQTT_PORT | 1883 | Port used for MQTT |
+| MQTT_HOSTNAME | | MQTT server ip address |
+| MQTT_BASEPATH | ocpp/chargerX | Basepath to use for mqtt. State and command will be after that |
+| MQTT_USERNAME | | Username to connect to MQTT if required |
+| MQTT_PASSWORD | | Password for MQTT connection |
+| MQTT_USESTATIONNAME | | Set to true (all lower) to append the station name to the MQTT_BASEPATH. Be sure the basepath end with / |
+| LISTEN_PORT | 3000 | Port to listen for ocpp connection |
+| LISTEN_ADDR | 0.0.0.0 | If using multiple NIC, used to bind to a specific address |
+| AUTHORIZED_TAG_ID_LIST | | List of station ID that are authorized to charge |
+
 Edit or create the `.env` file to set your OCPP and MQTT parameters:
 
 ```bash
@@ -63,6 +75,7 @@ MQTT_HOSTNAME=xxx.xxx.xxx.xxx
 MQTT_BASEPATH='ocpp/chargerX'
 MQTT_USERNAME=
 MQTT_PASSWORD=
+MQTT_USESTATIONAME=
 
 LISTEN_PORT=3000
 LISTEN_ADDR=0.0.0.0
