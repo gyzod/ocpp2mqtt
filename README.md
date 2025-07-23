@@ -54,6 +54,8 @@ This can operate in containerized mode or in normal mode.
 4. The application will start listening for OCPP and MQTT requests and convert them to MQTT or OCPP messages.
 
 ## Configuration
+Edit or create the `.env` file to set your OCPP and MQTT parameters. Can also be set in docker.
+
 | Name | Value | Description |
 | --- | --- | --- |
 | MQTT_PORT | 1883 | Port used for MQTT |
@@ -66,7 +68,7 @@ This can operate in containerized mode or in normal mode.
 | LISTEN_ADDR | 0.0.0.0 | If using multiple NIC, used to bind to a specific address |
 | AUTHORIZED_TAG_ID_LIST | '["johnny-car","other-car"]' | List of station ID that are authorized to charge |
 
-Edit or create the `.env` file to set your OCPP and MQTT parameters:
+
 
 ```bash
 MQTT_PORT=1883
