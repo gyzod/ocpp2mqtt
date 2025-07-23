@@ -36,7 +36,10 @@ LISTEN_PORT=int(os.getenv('LISTEN_PORT')) # 9000
 async def on_connect(websocket: websockets.ServerConnection):
 
     logging.info("Received new connection from %s, path=%s", websocket.remote_address, websocket.request.path)
-    query_string = websocket.request.path.split("?", 1)[1]  # Gets "station=GRS-1700004a35c"
+    try:
+        query_string = websocket.request.path.split("?", 1)[1]  # Gets "station=GRS-1700004a35c"
+    except IndexError:
+        query_string = websocket.request.path.split("/", 1)[1] # Gets "/stationid" used with Autel Charger
     query = urllib.parse.parse_qs(query_string)
 
     """For every new charge point that connects, create a ChargePoint
