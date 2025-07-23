@@ -54,8 +54,6 @@ This can operate in containerized mode or in normal mode.
 4. The application will start listening for OCPP and MQTT requests and convert them to MQTT or OCPP messages.
 
 ## Configuration
-
-Variable that can be used either in docker or using a .env
 | Name | Value | Description |
 | MQTT_PORT | 1883 | Port used for MQTT |
 | MQTT_HOSTNAME | xxx.xxx.xxx.xxx | MQTT server ip address |
@@ -66,6 +64,20 @@ Variable that can be used either in docker or using a .env
 | LISTEN_PORT | 3000 | Port to listen for ocpp connection |
 | LISTEN_ADDR | 0.0.0.0 | If using multiple NIC, used to bind to a specific address |
 | AUTHORIZED_TAG_ID_LIST | '["johnny-car","other-car"]' | List of station ID that are authorized to charge |
+
+| Name | Value | Example |
+| --- | --- | --- |
+| STEAMCMD_DIR | Folder for SteamCMD | /serverdata/steamcmd |
+| SERVER_DIR | Folder for gamefile | /serverdata/serverfiles |
+| GAME_ID | The GAME_ID that the container downloads at startup. If you want to install a static or beta version of the game change the value to: '232330 -beta YOURBRANCH' (without quotes, replace YOURBRANCH with the branch or version you want to install). | 232330 |
+| GAME_NAME | SRCDS gamename | cstrike |
+| GAME_PARAMS | Values to start the server | -secure +maxplayers 32 +map de_dust2 |
+| UID | User Identifier | 99 |
+| GID | Group Identifier | 100 |
+| GAME_PORT | Port the server will be running on | 27015 |
+| VALIDATE | Validates the game data | blank |
+| USERNAME | Leave blank for anonymous login | blank |
+| PASSWRD | Leave blank for anonymous login | blank |
 
 Edit or create the `.env` file to set your OCPP and MQTT parameters:
 
