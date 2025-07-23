@@ -38,9 +38,14 @@ async def on_connect(websocket: websockets.ServerConnection):
     logging.info("Received new connection from %s, path=%s", websocket.remote_address, websocket.request.path)
     try:
         query_string = websocket.request.path.split("?", 1)[1]  # Gets "station=GRS-1700004a35c"
+        query = urllib.parse.parse_qs(query_string)
+        charge_point_id = query.get("station", [None])[0]
     except IndexError:
-        query_string = websocket.request.path.split("/", 1)[1] # Gets "/stationid" used with Autel Charger
-    query = urllib.parse.parse_qs(query_string)
+        try:
+            query_string = websocket.request.path.split("/", 1)[1] # Gets "/stationid" used with Autel Charger
+            charge_point_id = query_string
+        except IndexError:
+            logging.error("Invalid connection string, use either ws://server:port/ocpp1.6?station=name or ws://server:port/stationname")
 
     """For every new charge point that connects, create a ChargePoint
     instance and start listening for messages.
@@ -65,7 +70,7 @@ async def on_connect(websocket: websockets.ServerConnection):
         return await websocket.close()
 
 
-    charge_point_id = query.get("station", [None])[0]
+    
 
     logging.info("Charge Point ID: %s", charge_point_id)
 
