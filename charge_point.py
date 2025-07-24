@@ -21,6 +21,7 @@ MQTT_PORT=int(os.getenv('MQTT_PORT'))
 MQTT_BASEPATH=os.getenv('MQTT_BASEPATH')
 MQTT_USERNAME=os.getenv('MQTT_USERNAME', None)
 MQTT_PASSWORD=os.getenv('MQTT_PASSWORD', None)
+MQTT_USESTATIONNAME=os.getenv('MQTT_USESTATIONNAME', None)
 
 # specify the tag_ID which is authorized in the charge station. 
 # Remote server has to send to CP authorised ID in order to start charging
@@ -42,6 +43,12 @@ class ChargePoint(cp):
         #self.transaction_id += 1
         return self.transaction_id
 
+    def get_mqttpath(self):
+        mqtt_path = MQTT_BASEPATH
+        if MQTT_USESTATIONNAME == "true":
+            mqtt_path +=self.id
+        return mqtt_path
+        
     #Received events from the charge point
 
     @on(Action.authorize)
@@ -173,23 +180,27 @@ class ChargePoint(cp):
     # MQTT implementation
     ## MQTT publish
     async def push_state_values_mqtt(self,**kwargs):
-        for k,v in kwargs.items():
-            await self.client.publish(f"{MQTT_BASEPATH}/state/{k}", payload=v)
+        mqtt_path = self.get_mqttpath()
+        for k,v in kwargs.items():    
+            await self.client.publish(f"{mqtt_path}/state/{k}", payload=v)
 
     async def push_state_value_mqtt(self, key, value):
-        await self.client.publish(f"{MQTT_BASEPATH}/state/{key}", payload=value)
+        mqtt_path = self.get_mqttpath()
+        await self.client.publish(f"{mqtt_path}/state/{key}", payload=value)
 
     async def push_call_return_mqtt(self, result):
+        mqtt_path = self.get_mqttpath()
         for k,v in result.items():
-            await self.client.publish(f"{MQTT_BASEPATH}/cmd_result/{k}", payload=v)
+            await self.client.publish(f"{mqtt_path}/cmd_result/{k}", payload=v)
 
     ## received events from MQTT
     async def mqtt_listen(self):
         print("Starting MQTT loop...")
+        mqtt_path = self.get_mqttpath()
         try:
             async with Client(hostname=MQTT_HOSTNAME,port=MQTT_PORT, username=MQTT_USERNAME, password=MQTT_PASSWORD) as client:
                 self.client=client
-                await client.subscribe(f"{MQTT_BASEPATH}/cmd/#")
+                await client.subscribe(f"{mqtt_path}/cmd/#")
                 async for message in client.messages:
                     print("<-- MQTT msg received : ", message.payload)
                     msg = JSON.loads(message.payload.decode("utf-8"))
