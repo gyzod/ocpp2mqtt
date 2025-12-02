@@ -15,63 +15,69 @@ import signal
 try:
     import websockets
 except ModuleNotFoundError:
-    print("This example relies on the 'websockets' package.")
-    print("Please install it by running: ")
-    print()
-    print(" $ pip install websockets")
-    import sys
-
+    logging.error("This example relies on the 'websockets' package.")
+    logging.error("Please install it by running: ")
+    logging.error(" $ pip install websockets")
     sys.exit(1)
 
 from charge_point import ChargePoint
+from websockets.typing import Subprotocol
 
 logging.basicConfig(level=logging.INFO)
 
 load_dotenv(verbose=True)
 
-LISTEN_ADDR=os.getenv('LISTEN_ADDR') # 0.0.0.0 for localhost
-LISTEN_PORT=int(os.getenv('LISTEN_PORT')) # 9000
+LISTEN_ADDR=os.getenv('LISTEN_ADDR', '0.0.0.0') 
+LISTEN_PORT=int(os.getenv('LISTEN_PORT', 3000)) 
 
 
 async def on_connect(websocket: websockets.ServerConnection):
 
-    logging.info("Received new connection from %s, path=%s", websocket.remote_address, websocket.request.path)
-    query_string = websocket.request.path.split("?", 1)[1]  # Gets "station=GRS-1700004a35c"
-    query = urllib.parse.parse_qs(query_string)
+    request_path = getattr(websocket, "path", "") or ""
+    logging.info("Received new connection from %s, path=%s", websocket.remote_address, request_path)
+
+    if "?" in request_path:
+        query_string = request_path.split("?", 1)[1]
+        query = urllib.parse.parse_qs(query_string)
+    else:
+        logging.info("Connection path missing station query parameter; using fallback id")
+        query = {}
 
     """For every new charge point that connects, create a ChargePoint
     instance and start listening for messages.
     """
-    try:
-        requested_protocols = websocket.request.headers["Sec-WebSocket-Protocol"]
-    except KeyError:
-        logging.error("Client hasn't requested any Subprotocol. Closing Connection")
-        return await websocket.close()
+    request_headers = getattr(websocket, "request_headers", {}) or {}
+    requested_protocols = request_headers.get("Sec-WebSocket-Protocol")
+    if not requested_protocols:
+        logging.warning("Client hasn't requested any Subprotocol. Continuing without it.")
     if websocket.subprotocol:
         logging.info("Protocols Matched: %s", websocket.subprotocol)
     else:
-        # In the websockets lib if no subprotocols are supported by the
-        # client and the server, it proceeds without a subprotocol,
-        # so we have to manually close the connection.
+        msg = (
+            "Protocols mismatched | Expected Subprotocols: %s,"
+            " but client supports %s. Connection will stay open; ensure the"
+            " charge point is configured for ocpp1.6."
+        )
         logging.warning(
-            "Protocols Mismatched | Expected Subprotocols: %s,"
-            " but client supports  %s | Closing connection",
-            websocket.available_subprotocols,
+            msg,
+            getattr(websocket, "available_subprotocols", []),
             requested_protocols,
         )
-        return await websocket.close()
 
 
     charge_point_id = query.get("station", [None])[0]
+    if not charge_point_id:
+        host, port = (websocket.remote_address or ("unknown", "0"))
+        charge_point_id = f"cp_{host}_{port}"
+        logging.warning("No charge point station provided, fallback id %s", charge_point_id)
 
     logging.info("Charge Point ID: %s", charge_point_id)
 
     cpSession = ChargePoint(charge_point_id, websocket)
-    cpSession.heartbeat = 0
     
     await asyncio.gather(cpSession.mqtt_listen(), cpSession.start())
 
-    print("Chargepoint session instance successfully created")
+    logging.info("Chargepoint session instance successfully created")
 
 class SignalHandler:
     shutdown_requested = False
@@ -81,7 +87,7 @@ class SignalHandler:
         signal.signal(signal.SIGTERM, self.request_shutdown)
 
     def request_shutdown(self, *args):
-        print('Request to shutdown received, stopping')
+        logging.info('Request to shutdown received, stopping')
         self.shutdown_requested = True
         sys.exit(0)
 
@@ -90,15 +96,25 @@ class SignalHandler:
 
 
 async def main():
-    server = await websockets.serve(on_connect, LISTEN_ADDR, LISTEN_PORT, subprotocols=["ocpp1.6"], ping_timeout = None)
+    server = await websockets.serve(
+        on_connect,
+        LISTEN_ADDR,
+        LISTEN_PORT,
+        subprotocols=[Subprotocol("ocpp1.6")],
+        ping_timeout=None,
+    )
     logging.info("Server Started listening to new ocpp connections...")
     await server.wait_closed()
 
 signal_handler = SignalHandler()   
 
 if sys.platform.lower() == "win32" or os.name.lower() == "nt":
-    from asyncio import set_event_loop_policy, WindowsSelectorEventLoopPolicy
-    set_event_loop_policy(WindowsSelectorEventLoopPolicy())
+    try:
+        from asyncio.windows_events import WindowsSelectorEventLoopPolicy  # type: ignore[attr-defined]
+    except ImportError:  # pragma: no cover - non-Windows environment
+        logging.warning("WindowsSelectorEventLoopPolicy unavailable on this platform")
+    else:
+        asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
 
 
 if __name__ == "__main__":

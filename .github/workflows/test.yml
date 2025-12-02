@@ -1,0 +1,53 @@
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov
+
+    - name: Run tests with coverage
+      run: |
+        pytest --cov=. --cov-report=xml
+
+    - name: Upload coverage to workflow summary
+      if: always()
+      run: |
+        coverage_line=$(python - <<'PY'
+import xml.etree.ElementTree as ET
+from pathlib import Path
+report = Path('coverage.xml')
+if not report.exists():
+    print('Coverage report missing')
+    raise SystemExit(0)
+tree = ET.parse(report)
+line_rate = float(tree.getroot().attrib.get('line-rate', 0)) * 100
+print(f"Total line coverage: {line_rate:.2f}%")
+PY
+)
+        echo "$coverage_line" >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload coverage artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.xml

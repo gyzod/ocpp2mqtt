@@ -3,3 +3,6 @@ aiomqtt
 typing-extensions
 python-dotenv
 ocpp
+pytest
+pytest-asyncio
+pytest-cov

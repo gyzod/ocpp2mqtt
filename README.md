@@ -63,6 +63,14 @@ MQTT_HOSTNAME=xxx.xxx.xxx.xxx
 MQTT_BASEPATH='ocpp/chargerX'
 MQTT_USERNAME=
 MQTT_PASSWORD=
+MQTT_TRANSPORT=tcp
+MQTT_KEEPALIVE=60
+MQTT_TIMEOUT=30
+MQTT_RECONNECT_BASE_DELAY=5
+MQTT_RECONNECT_MAX_DELAY=60
+#MQTT_CLIENT_ID=ocpp2mqtt-chargerX
+#MQTT_WEBSOCKET_PATH=/mqtt
+#MQTT_WEBSOCKET_HEADERS='{"Sec-WebSocket-Protocol": "mqtt"}'
 
 LISTEN_PORT=3000
 LISTEN_ADDR=0.0.0.0
@@ -70,6 +78,8 @@ LISTEN_ADDR=0.0.0.0
 AUTHORIZED_TAG_ID_LIST='["johnny-car","other-car"]'
 
 ```
+
+`MQTT_TRANSPORT` accepts `tcp`, `websockets`, or `unix`. Use the websocket fields when your broker sits behind an HTTP proxy (for example, Kubernetes ingress). Adjust `MQTT_KEEPALIVE`/`MQTT_TIMEOUT` if intermediaries close idle connections aggressively. When you need a deterministic MQTT client identifier (e.g., HA pairs), set `MQTT_CLIENT_ID`—otherwise the identifier defaults to `ocpp2mqtt-<stationId>`.
 
 ## MQTT topics and messages
 
