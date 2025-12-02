@@ -32,17 +32,17 @@ jobs:
       if: always()
       run: |
         coverage_line=$(python - <<'PY'
-import xml.etree.ElementTree as ET
-from pathlib import Path
-report = Path('coverage.xml')
-if not report.exists():
-    print('Coverage report missing')
-    raise SystemExit(0)
-tree = ET.parse(report)
-line_rate = float(tree.getroot().attrib.get('line-rate', 0)) * 100
-print(f"Total line coverage: {line_rate:.2f}%")
-PY
-)
+        import xml.etree.ElementTree as ET
+        from pathlib import Path
+        report = Path('coverage.xml')
+        if not report.exists():
+            print('Coverage report missing')
+            raise SystemExit(0)
+        tree = ET.parse(report)
+        line_rate = float(tree.getroot().attrib.get('line-rate', 0)) * 100
+        print(f"Total line coverage: {line_rate:.2f}%")
+        PY
+        )
         echo "$coverage_line" >> $GITHUB_STEP_SUMMARY
 
     - name: Upload coverage artifact
