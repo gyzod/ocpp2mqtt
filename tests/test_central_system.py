@@ -39,7 +39,7 @@ async def test_on_connect_missing_station(monkeypatch):
     FakeChargePoint.instances = []
     monkeypatch.setattr(central_system, "ChargePoint", FakeChargePoint)
 
-    ws = DummyWebSocket(path="/ocpp")
+    ws = DummyWebSocket(path="/")
 
     await central_system.on_connect(ws)
 

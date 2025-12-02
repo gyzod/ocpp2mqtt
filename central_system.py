@@ -36,12 +36,20 @@ async def on_connect(websocket: websockets.ServerConnection):
     request_path = getattr(websocket, "path", "") or ""
     logging.info("Received new connection from %s, path=%s", websocket.remote_address, request_path)
 
+    charge_point_id = None
+    query = {}
+
     if "?" in request_path:
         query_string = request_path.split("?", 1)[1]
         query = urllib.parse.parse_qs(query_string)
-    else:
-        logging.info("Connection path missing station query parameter; using fallback id")
-        query = {}
+        charge_point_id = query.get("station", [None])[0]
+    
+    if not charge_point_id:
+        # Try to extract from path if it looks like a station ID
+        if request_path.startswith("/"):
+             potential_id = request_path[1:]
+             if potential_id and "?" not in potential_id:
+                 charge_point_id = potential_id
 
     """For every new charge point that connects, create a ChargePoint
     instance and start listening for messages.
@@ -65,7 +73,6 @@ async def on_connect(websocket: websockets.ServerConnection):
         )
 
 
-    charge_point_id = query.get("station", [None])[0]
     if not charge_point_id:
         host, port = (websocket.remote_address or ("unknown", "0"))
         charge_point_id = f"cp_{host}_{port}"

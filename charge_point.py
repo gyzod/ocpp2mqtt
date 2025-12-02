@@ -31,6 +31,7 @@ MQTT_TIMEOUT=float(os.getenv('MQTT_TIMEOUT', 30))
 MQTT_TRANSPORT=os.getenv('MQTT_TRANSPORT', 'tcp').lower()
 MQTT_CLIENT_ID=os.getenv('MQTT_CLIENT_ID', None)
 MQTT_WEBSOCKET_PATH=os.getenv('MQTT_WEBSOCKET_PATH', None)
+MQTT_USESTATIONNAME=os.getenv('MQTT_USESTATIONNAME', None)
 
 _MQTT_ALLOWED_TRANSPORTS = {'tcp', 'websockets', 'unix'}
 if MQTT_TRANSPORT not in _MQTT_ALLOWED_TRANSPORTS:
@@ -104,6 +105,12 @@ class ChargePoint(cp):
         #self.transaction_id += 1
         return self.transaction_id
 
+    def get_mqttpath(self):
+        mqtt_path = MQTT_BASEPATH
+        if MQTT_USESTATIONNAME == "true":
+            mqtt_path +=self.id
+        return mqtt_path
+        
     #Received events from the charge point
 
     @on(Action.authorize)
@@ -235,16 +242,25 @@ class ChargePoint(cp):
    
     # MQTT implementation
     ## MQTT publish
+    def get_mqttpath(self):
+        mqtt_path = MQTT_BASEPATH
+        if MQTT_USESTATIONNAME == "true":
+            mqtt_path +=self.id
+        return mqtt_path
+
     async def push_state_values_mqtt(self,**kwargs):
+        mqtt_path = self.get_mqttpath()
         for k,v in kwargs.items():
-            await self._mqtt_publish(f"{MQTT_BASEPATH}/state/{k}", payload=v)
+            await self._mqtt_publish(f"{mqtt_path}/state/{k}", payload=v)
 
     async def push_state_value_mqtt(self, key, value):
-        await self._mqtt_publish(f"{MQTT_BASEPATH}/state/{key}", payload=value)
+        mqtt_path = self.get_mqttpath()
+        await self._mqtt_publish(f"{mqtt_path}/state/{key}", payload=value)
 
     async def push_call_return_mqtt(self, result):
+        mqtt_path = self.get_mqttpath()
         for k,v in result.items():
-            await self._mqtt_publish(f"{MQTT_BASEPATH}/cmd_result/{k}", payload=v)
+            await self._mqtt_publish(f"{mqtt_path}/cmd_result/{k}", payload=v)
 
     async def _mqtt_publish(self, topic, payload):
         client = getattr(self, "client", None)
@@ -269,7 +285,8 @@ class ChargePoint(cp):
                                   **self._mqtt_client_options()) as client:
                     self.client=client
                     reconnect_delay = MQTT_RECONNECT_BASE_DELAY
-                    await client.subscribe(f"{MQTT_BASEPATH}/cmd/#")
+                    mqtt_path = self.get_mqttpath()
+                    await client.subscribe(f"{mqtt_path}/cmd/#")
                     async for message in client.messages:
                         try:
                             payload = message.payload.decode("utf-8")
