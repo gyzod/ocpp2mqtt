@@ -220,6 +220,10 @@ class ChargePoint(cp):
         await self.push_state_value_mqtt('connection_state', 'CONNECTED')
         await self.push_state_values_mqtt(**kwargs)
 
+        if status != "Charging":
+            await self.push_state_value_mqtt('power_active_import', 0)
+            await self.push_state_value_mqtt('current_import', 0)
+
         # local persistence of the status
         self.status = status
 
