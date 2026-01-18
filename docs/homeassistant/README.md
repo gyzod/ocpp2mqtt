@@ -127,10 +127,10 @@ mqtt:
   switch:
     # Control Switches
     - name: "EV Charger Charging Enabled"
-      state_topic: "ocpp/charger1/charging_enabled"
-      command_topic: "ocpp/charger1/charging_enabled/set"
-      payload_on: "true"
-      payload_off: "false"
+      command_topic: "ocpp/charger1/cmd"
+      payload_on: '{"action":"change_availability", "args": {"type": "Operative", "connector_id": 1}}'
+      payload_off: '{"action":"change_availability", "args": {"type": "Inoperative", "connector_id": 1}}'
+      optimistic: true
       icon: mdi:power-plug
       
     - name: "EV Charger Notifications Enabled"
@@ -197,13 +197,13 @@ automation:
               - service: mqtt.publish
                 data:
                   topic: "ocpp/charger1/cmd"
-                  payload: '{"action":"change_availability", "args": {"value": "operative"}}'
+                  payload: '{"action":"change_availability", "args": {"type": "Operative", "connector_id": 1}}'
           - conditions:
               - condition: state
                 entity_id: switch.ev_charger_charging_enabled
                 state: "off"
             sequence:
-              # Disable charging: set availability to inoperative and stop
+              # Disable charging: set availability to inoperative
               - service: mqtt.publish
                 data:
                   topic: "ocpp/charger1/cmd"
@@ -211,13 +211,7 @@ automation:
               - service: mqtt.publish
                 data:
                   topic: "ocpp/charger1/cmd"
-                  payload: '{"action":"change_availability", "args": {"value": "inoperative"}}'
-              - delay:
-                  seconds: 1
-              - service: mqtt.publish
-                data:
-                  topic: "ocpp/charger1/cmd"
-                  payload: '{"action":"remote_stop_transaction"}'
+                  payload: '{"action":"change_availability", "args": {"type": "Inoperative", "connector_id": 1}}'
 ```
 
 #### Automation 2: Energy Calculation and Notifications
@@ -324,9 +318,9 @@ automation:
             {% elif action == "Reset Hard" %}
             {"action":"reset", "args": {"type": "hard"}}
             {% elif action == "Enable" %}
-            {"action":"change_availability", "args": {"value": "operative"}}
+            {"action":"change_availability", "args": {"type": "Operative", "connector_id": 1}}
             {% elif action == "Disable" %}
-            {"action":"change_availability", "args": {"value": "inoperative"}}
+            {"action":"change_availability", "args": {"type": "Inoperative", "connector_id": 1}}
             {% endif %}
       - service: input_select.select_option
         target:
@@ -498,6 +492,9 @@ command_topic: "your/custom/topic/cmd"
 3. **Notifications not sending**: Verify notify service configuration
 4. **Template sensors showing unknown**: Check syntax in `configuration.yaml`
 5. **MQTT payloads failing**: Validate JSON format in automations
+6. **Switch shows "unknown" state**: Use `optimistic: true` if ocpp2mqtt doesn't publish state_topic
+7. **ChangeAvailability errors**: Ensure `connector_id` parameter is included in args (usually `1`)
+8. **Transaction stop errors**: Use `change_availability` to Inoperative instead of `remote_stop_transaction` (which requires transaction_id)
 
 ## Advanced Features
 
