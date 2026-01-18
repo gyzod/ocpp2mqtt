@@ -1,5 +1,5 @@
-# Use Python 3.10 as base image
-FROM python:3.10-alpine
+# Use Python 3.12 as base image
+FROM python:3.12-alpine
 
 ENV PYTHONUNBUFFERED=1
 

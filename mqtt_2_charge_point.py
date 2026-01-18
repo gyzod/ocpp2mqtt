@@ -2,7 +2,8 @@ import logging
 
 from ocpp.v16 import call
 
-logging.basicConfig(level=logging.INFO)
+# Use logger from logging_config (configured by central_system.py)
+logger = logging.getLogger(__name__)
 
 def cancel_reservation(cp, payload):  
     return cp.call(call.CancelReservation(**payload))

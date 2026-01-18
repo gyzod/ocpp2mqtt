@@ -1,0 +1,413 @@
+val dateFormat = "%1$tH:%1$tM %1$tY-%1$tm-%1$td"
+val kwh_cost = 0.10342
+
+rule "changer logical masterswitch"
+when
+    Item Grizzle_charger_charging_enabled changed
+then
+    val mqttActions = getActions("mqtt","mqtt:broker:myUnsecureBroker")
+    val topic = "ocpp/charger1/cmd"
+
+    if(Grizzle_charger_charging_enabled.state == ON)
+    {
+        logInfo("ocpp.rules", "On active la charge")
+        Grizzle_charger_action.sendCommand('availability_operative')
+
+        var payload = '{"action":"change_configuration", "args": {"key": "StartChargingAfterConnect", "value": "true"}}'
+        mqttActions.publishMQTT(topic,payload)    
+    }
+    else
+    {
+        logInfo("ocpp.rules", "On désactive la charge")
+        Grizzle_charger_action.sendCommand('availability_inoperative')
+        Thread.sleep(1000)
+        Grizzle_charger_action.sendCommand('remote_stop_transaction')
+
+        var payload = '{"action":"change_configuration", "args": {"key": "StartChargingAfterConnect", "value": "false"}}'
+        mqttActions.publishMQTT(topic,payload)    
+    }
+end
+
+rule "changer charger action"
+when
+    Item Grizzle_charger_action changed   
+then
+    if(Grizzle_charger_action.state === NULL) 
+        return;
+
+    logInfo("ocpp.rules", "Changement de l'action du charger Grizzle à " + Grizzle_charger_action.state)
+    
+    /*{
+    "action": "trigger_args",
+    "args": 
+    {"connector_id" : 1,
+    "requested_args": "meter_values"
+    }
+    }*/
+
+    val topic = "ocpp/charger1/cmd"
+    val idTag = "uc_default_auth"
+
+    var payload = ""
+
+    if (Grizzle_charger_action.state == 'remote_start_transaction') {
+        logInfo("ocpp.rules", "On démarre la transaction")
+        payload = '{"action":"remote_start_transaction", "args": {"connector_id": 1, "id_tag": "' + idTag + '"}}'
+    }    
+    else if (Grizzle_charger_action.state == 'remote_stop_transaction')
+    {
+        logInfo("ocpp.rules", "On arrête la transaction")
+        payload = '{"action":"remote_stop_transaction", "args": {"transaction_id": 1}}'
+    }
+    else if (Grizzle_charger_action.state == 'unlock_connector')
+    {
+        logInfo("ocpp.rules", "On déverrouille le connecteur")
+        payload = '{"action":"unlock_connector", "args": {"connector_id": 1}}'
+    }
+    else if (Grizzle_charger_action.state == 'reset_soft')
+    {
+        logInfo("ocpp.rules", "On reset la borne")
+        payload = '{"action":"reset", "args": {"type": "Soft"}}'
+    }
+    else if (Grizzle_charger_action.state == 'reset_hard')
+    {
+        logInfo("ocpp.rules", "On reset la borne")
+        payload = '{"action":"reset", "args": {"type": "Hard"}}'
+    }
+    else if (Grizzle_charger_action.state == 'availability_operative')
+    {
+        logInfo("ocpp.rules", "action : availability_operative")
+        val s = "Operative"
+        payload = '{"action":"change_availability", "args": {"connector_id": 1, "type": "' + s + '"}}'
+    }
+    else if (Grizzle_charger_action.state == 'availability_inoperative')
+    {
+        logInfo("ocpp.rules", "action : availability_inoperative")
+        val s = "Inoperative"
+        payload = '{"action":"change_availability", "args": {"connector_id": 1, "type": "' + s + '"}}'
+    }
+    else if (Grizzle_charger_action.state == 'set_charging_profile')
+    {
+        logInfo("ocpp.rules", "action : set_charging_profile")
+        payload = '{"action":"set_charging_profile",  "args": 
+        {
+                "connector_id": 1,
+                "cs_charging_profiles": {
+                    "charging_profile_id": 8,
+                    "stack_level": 2,
+                    "charging_profile_purpose": "TxDefaultProfile",
+                    "charging_profile_kind": "Relative",
+                    "charging_schedule": {
+                        "charging_rate_unit": "A",
+                        "charging_schedule_period": [
+                            {
+                                "start_period": 0,
+                                "limit": 20
+                            }
+                        ]
+                    }
+                }
+            }
+        }' 
+    }
+    else
+    {
+        logInfo("ocpp.rules", "Action inconnue : " + Grizzle_charger_action.state)
+        return
+    }
+
+    val mqttActions = getActions("mqtt","mqtt:broker:myUnsecureBroker")
+    mqttActions.publishMQTT(topic,payload)    
+
+    postUpdate(Grizzle_charger_action, NULL) //reset buttons
+    
+    logInfo("ocpp.rules", "Publishing MQTT topic=" + topic + ", args=" + payload)
+end
+
+//{"configurationKey":[{"key":"MaxCurrent","readonly":true,"value":"24000"},{"key":"MinCurrent","readonly":true,"value":"8000"},{"key":"SetCurrent","readonly":false,"value":"0"},{"key":"StartChargingAfterConnect","readonly":false,"value":"false"},{"key":"AuthorizeRemoteTxRequests","readonly":false,"value":"true"},{"key":"ConnectorPhaseRotation","readonly":true,"value":"NotApplicable"},{"key":"HeartbeatInterval","readonly":false,"value":"10"},{"key":"LocalAuthorizeOffline","readonly":false,"value":"true"},{"key":"LocalPreAuthorize","readonly":false,"value":"true"},{"key":"MeterValueSampleInterval","readonly":false,"value":"20"},{"key":"NumberOfConnectors","readonly":true,"value":"1"},{"key":"ResetRetries","readonly":true,"value":"1"},{"key":"StopTransactionOnInvalid","readonly":false,"value":"true"},{"key":"SupportedFeatureProfiles","readonly":true,"value":"Core,FirmwareManagement"},{"key":"UnlockConnectorOnEVSideDisconnect","readonly":false,"value":"true"},{"key":"StationPassword","readonly":false,"value":"xxxxxxxxxx"},{"key":"ServerUrl","readonly":false,"value":"ws://ocpp2mqtt.home.ca/ocpp1.6?station="}]}
+//https://github.com/lbbrhzn/ocpp/issues/899
+
+rule "calculate meter diff.  Ca donne le wh de la dernière transaction."
+when
+    Item Grizzle_charger_meter_stop changed
+then
+    logInfo("ocpp.rules", "Calcul de la différence de compteur pour la transaction")
+
+    val diff = (Grizzle_charger_meter_stop.state as Number) - (Grizzle_charger_meter_start.state as Number)
+    if(diff < 2)  //pas encore la fin de la transaction
+    {
+        return
+    }
+
+    postUpdate(Grizzle_charger_meter_diff, diff)
+    val cost = diff / 1000 * kwh_cost 
+    postUpdate(Grizzle_charger_meter_cost, cost)
+    val cumul = (Grizzle_charger_meter_cost_cumulative.state as Number) + cost
+    postUpdate(Grizzle_charger_meter_cost_cumulative, cumul)
+
+    //Transaction terminée, notifications
+    val mailActions = getActions("mail","mail:smtp:e5efd5b2f9")
+    val maxkwh = 37.3
+
+    if(Grizzle_charger_notifications_enabled.state == ON)
+    {
+        mailActions.sendMail("4185648072@msg.telus.com", "EV Charger", "Voiture déconnectée, session terminée \n" +
+        "Énergie importée : " + String.format("%.2f", (diff / 1000)) + " kWh \n" +
+        "Percentage de la voiture : " + String.format("%.2f", ((diff / 1000)*100/maxkwh)) + "% \n" +
+        "Coût : " + String.format("%.2f", cost) + " $ \n" +
+        "Coût cumulatif : " + String.format("%.2f", cumul)  + " $ \n" +
+        "Timestamp : " + String.format(dateFormat, now))
+    }
+
+    Grizzle_charger_charge_completed.sendCommand(OFF)
+end
+
+rule "Voiture pleine"
+when
+    Item Grizzle_charger_status changed from "Charging" to "SuspendedEV" 
+then
+    
+    logInfo("ocpp.rules", "Passage à SuspendedEV")
+
+
+    val whImported = (Grizzle_charger_energy_active_import_register.state as Number).floatValue
+
+    if(whImported > 1000 && Grizzle_charger_charge_completed.state == OFF) //1kwh minimum, sinon pas vraiment chargée
+    {
+        val mailActions = getActions("mail","mail:smtp:e5efd5b2f9")
+        val maxkwh = 37.3
+        val kwhImported = whImported / 1000
+
+        if(Grizzle_charger_notifications_enabled.state == ON)
+        {
+            mailActions.sendMail("4185648072@msg.telus.com", "EV Charger", "Voiture chargée \n" +
+                "Énergie importée : " + String.format("%.2f", kwhImported) + " kWh \n" +
+                "Percentage de la voiture : " + String.format("%.2f", ((kwhImported)*100/maxkwh)) + "% \n" +
+                "Timestamp : " + String.format(dateFormat, now))
+        }
+
+        Grizzle_charger_charge_completed.sendCommand(ON)
+    }
+    else
+    {
+        logInfo("ocpp.rules", "Passage à SuspendedEV, mais pas assez d'énergie importée : " + whImported)
+    }
+end
+
+rule "Calcule pourcentage de charge"
+when
+    Item Grizzle_charger_energy_active_import_register changed
+then
+    val maxkwh = 37.3 //capacité de la fiat 500e
+    val whImported = (Grizzle_charger_energy_active_import_register.state as Number).floatValue
+    sendCommand(Grizzle_charger_energy_active_import_register_percentage, (whImported*100/maxkwh)/1000)
+
+
+end
+
+rule "Erreurs"
+when
+    Item Grizzle_charger_status changed to "Faulted" or
+    Item Grizzle_charger_error_code changed from "NoError"
+then
+    val msg = "État : " + Grizzle_charger_status + ", Erreur : " + Grizzle_charger_error_code
+    logInfo("ocpp.rules", msg)
+    
+    if(Grizzle_charger_notifications_enabled.state == ON)
+    {
+        val mailActions = getActions("mail","mail:smtp:e5efd5b2f9")
+        mailActions.sendMail("4185648072@msg.telus.com", "EV Charger", msg + " \n " + String.format(dateFormat, now))
+    }
+
+end
+
+rule "Charger Transaction Start"
+when
+    Item Grizzle_charger_status changed to "Charging"
+then
+    if(Grizzle_charger_charge_completed.state == OFF) //autrement c'Est un démarrage de charge après que ce soit déjà chargé
+    {
+        logInfo("ocpp.rules", "EV Charger : Démarrage de la charge")
+        if(Grizzle_charger_notifications_enabled.state == ON)
+        {
+            val mailActions = getActions("mail","mail:smtp:e5efd5b2f9")
+            mailActions.sendMail("4185648072@msg.telus.com", "EV Charger", "Démarrage de la charge \n" + 
+            "Timestamp : " + String.format(dateFormat, now))
+        }
+
+    }
+end
+
+rule "Set Configurations"
+when
+    Time cron "0 * * * * ?" //every minute 
+then
+    //logInfo("ocpp.rules", "Setting Configurations..." + String.format(dateFormat, now))
+
+    val mqttActions = getActions("mqtt","mqtt:broker:myUnsecureBroker")
+    val topic = "ocpp/charger1/cmd"
+
+    // fait par le master switch
+    /*
+    var payload = '{"action":"change_configuration", "args": {"key": "StartChargingAfterConnect", "value": "false"}}'
+    mqttActions.publishMQTT(topic,payload)    
+
+    Thread::sleep(100)
+    */
+    
+    var payload = '{"action":"change_configuration", "args": {"key": "StopTransactionOnInvalid", "value": "true"}}'
+    mqttActions.publishMQTT(topic,payload)    
+
+    Thread::sleep(100)
+
+    payload = '{"action":"change_configuration", "args": {"key": "UnlockConnectorOnEVSideDisconnect", "value": "true"}}'
+    mqttActions.publishMQTT(topic,payload)
+
+    Thread::sleep(100)
+
+    payload = '{"action":"charging_enabled", "args": "' + Grizzle_charger_charging_enabled.state + '"}'
+    mqttActions.publishMQTT(topic,payload)
+
+    Thread::sleep(100)
+
+    if(Grizzle_charger_charging_enabled.state == OFF && Grizzle_charger_status.state != "Unavailable")
+    {
+        Grizzle_charger_action.sendCommand('availability_inoperative')
+    }
+
+    Thread::sleep(100)
+
+    if(Grizzle_charger_status.state != "Charging")
+    {
+        Grizzle_charger_current_import.postUpdate(0)
+        Thread::sleep(100)
+        Grizzle_charger_power_active_import.postUpdate(0)
+    }
+end
+
+
+/*
+    HORAIRES CHARGEMENT VÉHICULE
+*/
+
+rule "Ancrages nuit"
+when 
+    Time cron "0 0 1 * * ?" 
+then
+    if(Grizzle_charger_charging_schedule.state == "AUTO")
+    {
+        if(HydroQuebec_Maison_WCCriticalMorningPeakToday.state == ON){
+            logInfo("ocpp.rules", "Ancrage, mode peak matin : " + HydroQuebec_Maison_WCCriticalMorningPeakToday.state + ", on active la charge")
+            Grizzle_charger_charging_enabled.sendCommand(ON)
+        }
+        else{
+            logInfo("ocpp.rules", "Ancrage, mode peak matin : " + HydroQuebec_Maison_WCCriticalMorningPeakToday.state + ", on désactive la charge")
+            Grizzle_charger_charging_enabled.sendCommand(ON)
+        } 
+    }
+end
+
+rule "Ancrage jour"
+when 
+    Time cron "0 0 12 * * ?" 
+then
+    if(Grizzle_charger_charging_schedule.state == "AUTO")
+    {
+        if(HydroQuebec_Maison_WCCriticalEveningPeakToday.state == ON){
+            logInfo("ocpp.rules", "Ancrage, mode peak pm : " + HydroQuebec_Maison_WCCriticalEveningPeakToday.state + ", on active la charge")
+            Grizzle_charger_charging_enabled.sendCommand(ON)
+        }
+        else{
+            logInfo("ocpp.rules", "Ancrage, mode peak pm : " + HydroQuebec_Maison_WCCriticalEveningPeakToday.state + ", on désactive la charge")
+            Grizzle_charger_charging_enabled.sendCommand(ON)
+        }
+    } 
+end
+
+rule "Peak matin"
+when 
+    Time cron "0 0 6 * * ?" 
+then
+    if(Grizzle_charger_charging_schedule.state == "AUTO")
+    {
+        if(HydroQuebec_Maison_WCCriticalMorningPeakToday.state == ON){
+            logInfo("ocpp.rules", "Période de peak potentiel : " + HydroQuebec_Maison_WCCriticalMorningPeakToday.state + ", on désactive la charge")
+            Grizzle_charger_charging_enabled.sendCommand(OFF)
+        }
+        else{
+            logInfo("ocpp.rules", "Période de peak potentiel : " + HydroQuebec_Maison_WCCriticalMorningPeakToday.state + ", on active la charge")
+            Grizzle_charger_charging_enabled.sendCommand(ON)
+        } 
+    }
+end
+
+rule "Peak soir"
+when 
+    Time cron "0 0 16 * * ?" 
+then
+    if(Grizzle_charger_charging_schedule.state == "AUTO")
+    {
+        if(HydroQuebec_Maison_WCCriticalEveningPeakToday.state == ON || HydroQuebec_Maison_WCCriticalMorningPeakTomorrow.state == ON){
+            logInfo("ocpp.rules", "Période de peak potentiel aujourd'hui : " + HydroQuebec_Maison_WCCriticalEveningPeakToday.state + 
+            " ou demain matin : " + HydroQuebec_Maison_WCCriticalMorningPeakTomorrow.state + ", on désactive la charge")
+            Grizzle_charger_charging_enabled.sendCommand(OFF)
+        }
+        else{
+            logInfo("ocpp.rules", "Période de peak potentiel : " + HydroQuebec_Maison_WCCriticalEveningPeakToday.state + ", on active la charge")
+            Grizzle_charger_charging_enabled.sendCommand(ON)
+        } 
+    }
+end
+
+rule "Schedules"
+when 
+    Item Grizzle_charger_charging_schedule changed
+then
+    logInfo("ocpp.rules", "Changement de la schedule de charge : " + Grizzle_charger_charging_schedule.state)
+    
+    if(Grizzle_charger_charging_schedule.state == "OFF")
+    {
+        logInfo("ocpp.rules", "Mode OFF, on désactive la charge")
+        Grizzle_charger_charging_enabled.sendCommand(OFF)
+    }
+    else if (Grizzle_charger_charging_schedule.state == "ON")
+    {
+        logInfo("ocpp.rules", "Mode ON, on active la charge")
+        Grizzle_charger_charging_enabled.sendCommand(ON)
+    }
+    //autrement c'est la schedule auto
+end
+
+rule "Schedule reset en mode AUTO"
+when
+    //Time cron "0 0 12 * * ?" or
+    Time cron "0 0 0 * * ?"  //minuit
+then
+    if(now.getMonthValue() >= 5 && now.getMonthValue() <= 11) //mai à novembre
+    {
+        //Grizzle_charger_charging_schedule.sendCommand("AUTO")
+        Grizzle_charger_charging_schedule.sendCommand("ON")
+        logInfo("ocpp.rules", "Réinitialise le chargeur en mode ON, ce n'est pas l'hivers")
+    }
+    else
+    {
+        //Grizzle_charger_charging_schedule.sendCommand("AUTO")
+        logInfo("ocpp.rules", "Réinitialise le chargeur en mode AUTO, c'est l'hivers")
+    }
+    
+end
+
+rule "Arret charge en dehors des heures"
+when 
+    Time cron "0 0 4 * * ?" or
+    Time cron "0 0 10 * * ?" or
+    Time cron "0 0 14 * * ?" or
+    Time cron "0 0 20 * * ?"
+then
+    if(Grizzle_charger_charging_schedule.state == "AUTO")
+    {
+        logInfo("ocpp.rules", "Mode AUTO : Arrêt de la charge, reprise plus tard selon l'horaire")
+        Grizzle_charger_charging_enabled.sendCommand(OFF)
+    }
+end
+

@@ -1,175 +1,338 @@
 # ocpp2mqtt
 
-ocpp2mqtt is a gateway software that converts OCPP (Open Charge Point Protocol) requests to MQTT (Message Queuing Telemetry Transport) and vice versa. This allows the integration of charging stations with any automation system.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
 
-## Features
+**ocpp2mqtt** is a gateway software that converts OCPP (Open Charge Point Protocol) requests to MQTT (Message Queuing Telemetry Transport) and vice versa. This enables seamless integration of EV charging stations with any home automation system.
 
-- Converts OCPP requests to MQTT and vice versa
-- Easy integration with automation systems
-- Docker support for easy deployment
-- Written in Python for flexibility and ease of use
+## ✨ Features
 
-## Prerequisites
+- 🔌 Converts OCPP 1.6 requests to MQTT and vice versa
+- 🏠 Easy integration with home automation systems (Home Assistant, OpenHAB, etc.)
+- 🐳 Docker and Kubernetes support for flexible deployment
+- 📝 Configurable logging with file rotation support
+- 🔄 Automatic MQTT reconnection with exponential backoff
+- 🔐 MQTT authentication support
+- 🌐 WebSocket transport support for MQTT
 
-This can operate in containerized mode or in normal mode.
+## 📋 Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [MQTT Topics](#mqtt-topics)
+- [Logging](#logging)
+- [Integration Guides](#integration-guides)
+- [Contributing](#contributing)
+- [License](#license)
+
+## 📦 Prerequisites
 
 - Python 3.8 or higher
-- Docker or Kubernetes or any container orchestrater (optional)
+- MQTT Broker (Mosquitto, HiveMQ, etc.)
+- Docker/Kubernetes (optional)
 
-## Installation
+## 🚀 Installation
 
-1. Clone the repository:
-
-    ```bash
-    git clone https://github.com/gyzod/ocpp2mqtt.git
-    cd ocpp2mqtt
-    ```
-
-2. Build 
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-    OR
-    
-    ```bash
-    docker build .
-    ```
-
-## Usage
-
-1. Configure your OCPP and MQTT settings in the `.env` file.
-
-2. Start the application:
-
-    ```bash
-    docker run
-    ```
-    or
-   
-    ```bash
-    python central_system.py
-    ```
-
-4. The application will start listening for OCPP and MQTT requests and convert them to MQTT or OCPP messages.
-
-## Configuration
-Edit or create the `.env` file to set your OCPP and MQTT parameters. Can also be set in docker.
-
-| Name | Value | Description |
-| --- | --- | --- |
-| MQTT_PORT | 1883 | Port used for MQTT |
-| MQTT_HOSTNAME | xxx.xxx.xxx.xxx | MQTT server ip address |
-| MQTT_BASEPATH | 'ocpp/chargerX' | Basepath to use for mqtt. State and command will be after that |
-| MQTT_USERNAME | blank | Username to connect to MQTT if required |
-| MQTT_PASSWORD | blank | Password for MQTT connection |
-| MQTT_USESTATIONNAME | blank | Set to true (all lower) to append the station name to the MQTT_BASEPATH. Be sure the basepath end with / |
-| LISTEN_PORT | 3000 | Port to listen for ocpp connection |
-| LISTEN_ADDR | 0.0.0.0 | If using multiple NIC, used to bind to a specific address |
-| AUTHORIZED_TAG_ID_LIST | '["johnny-car","other-car"]' | List of station ID that are authorized to charge |
-
-
+### Option 1: Python (Direct)
 
 ```bash
+# Clone the repository
+git clone https://github.com/gyzod/ocpp2mqtt.git
+cd ocpp2mqtt
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the application
+python central_system.py
+```
+
+### Option 2: Docker
+
+```bash
+# Build the image
+docker build -t ocpp2mqtt .
+
+# Run the container
+docker run -d \
+  --name ocpp2mqtt \
+  -p 3000:3000 \
+  -e MQTT_HOSTNAME=your-mqtt-broker \
+  -e MQTT_BASEPATH=ocpp/ \
+  -e MQTT_USESTATIONNAME=true \
+  ocpp2mqtt
+```
+
+### Option 3: Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  ocpp2mqtt:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - MQTT_HOSTNAME=mqtt-broker
+      - MQTT_BASEPATH=ocpp/
+      - MQTT_USESTATIONNAME=true
+      - AUTHORIZED_TAG_ID_LIST=["tag1","tag2"]
+    restart: unless-stopped
+```
+
+### Option 4: Kubernetes
+
+See [Kubernetes Deployment Guide](docs/kubernetes/README.md) for detailed instructions.
+
+## ⚙️ Configuration
+
+Create a `.env` file or set environment variables:
+
+### MQTT Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MQTT_HOSTNAME` | `localhost` | MQTT broker IP address or hostname |
+| `MQTT_PORT` | `1883` | MQTT broker port |
+| `MQTT_BASEPATH` | `ocpp/test` | Base path for MQTT topics |
+| `MQTT_USERNAME` | *(empty)* | MQTT username (if authentication required) |
+| `MQTT_PASSWORD` | *(empty)* | MQTT password |
+| `MQTT_TRANSPORT` | `tcp` | Transport protocol: `tcp`, `websockets`, or `unix` |
+| `MQTT_KEEPALIVE` | `60` | MQTT keepalive interval in seconds |
+| `MQTT_TIMEOUT` | `30` | MQTT connection timeout in seconds |
+| `MQTT_RECONNECT_BASE_DELAY` | `5` | Initial reconnection delay in seconds |
+| `MQTT_RECONNECT_MAX_DELAY` | `60` | Maximum reconnection delay in seconds |
+| `MQTT_CLIENT_ID` | *(auto)* | Custom MQTT client ID (auto-generated if not set) |
+| `MQTT_USESTATIONNAME` | *(empty)* | Set to `true` to append station name to base path |
+| `MQTT_WEBSOCKET_PATH` | *(empty)* | WebSocket path (for WebSocket transport) |
+| `MQTT_WEBSOCKET_HEADERS` | *(empty)* | JSON string with WebSocket headers |
+
+### Server Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LISTEN_ADDR` | `0.0.0.0` | Address to bind the OCPP WebSocket server |
+| `LISTEN_PORT` | `3000` | Port to listen for OCPP connections |
+| `AUTHORIZED_TAG_ID_LIST` | `[]` | JSON array of authorized RFID tags |
+
+### Logging Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `LOG_FILE` | *(empty)* | Path to log file (logs only to console if not set) |
+| `LOG_MAX_SIZE` | `10485760` | Maximum log file size in bytes (10MB default) |
+| `LOG_BACKUP_COUNT` | `5` | Number of backup log files to keep |
+| `LOG_FORMAT` | *(default)* | Custom log format string |
+| `LOG_DATE_FORMAT` | `%Y-%m-%d %H:%M:%S` | Log date format |
+
+### Example `.env` file
+
+```bash
+# MQTT Configuration
+MQTT_HOSTNAME=192.168.1.100
 MQTT_PORT=1883
-MQTT_HOSTNAME=xxx.xxx.xxx.xxx
-MQTT_BASEPATH='ocpp/chargerX'
+MQTT_BASEPATH=ocpp/
+MQTT_USESTATIONNAME=true
 MQTT_USERNAME=
 MQTT_PASSWORD=
-MQTT_TRANSPORT=tcp
-MQTT_KEEPALIVE=60
-MQTT_TIMEOUT=30
-MQTT_RECONNECT_BASE_DELAY=5
-MQTT_RECONNECT_MAX_DELAY=60
-#MQTT_CLIENT_ID=ocpp2mqtt-chargerX
-#MQTT_WEBSOCKET_PATH=/mqtt
-#MQTT_WEBSOCKET_HEADERS='{"Sec-WebSocket-Protocol": "mqtt"}'
-MQTT_USESTATIONAME=
 
+# Server Configuration
 LISTEN_PORT=3000
 LISTEN_ADDR=0.0.0.0
+AUTHORIZED_TAG_ID_LIST=["johnny-car","other-car"]
 
-AUTHORIZED_TAG_ID_LIST='["johnny-car","other-car"]'
-
+# Logging Configuration
+LOG_LEVEL=INFO
+LOG_FILE=/var/log/ocpp2mqtt/app.log
+LOG_MAX_SIZE=10485760
+LOG_BACKUP_COUNT=5
 ```
 
-`MQTT_TRANSPORT` accepts `tcp`, `websockets`, or `unix`. Use the websocket fields when your broker sits behind an HTTP proxy (for example, Kubernetes ingress). Adjust `MQTT_KEEPALIVE`/`MQTT_TIMEOUT` if intermediaries close idle connections aggressively. When you need a deterministic MQTT client identifier (e.g., HA pairs), set `MQTT_CLIENT_ID`—otherwise the identifier defaults to `ocpp2mqtt-<stationId>`.
+## 🔧 Usage
 
-## MQTT topics and messages
+### Starting the Server
 
-state topics : /ocpp/[your charger]/state is where all the data sent from charge_point to the central_system is sent.
+```bash
+python central_system.py
+```
 
-Here is and example of state topics : 
+The server will start listening for OCPP connections on the configured address and port. When a charge point connects, it will automatically bridge communications to MQTT.
 
-![image](https://github.com/user-attachments/assets/cd1a1360-07e4-46e7-babe-63a899677c3a)
+### Charge Point Connection
 
-
-To send message from the central_system to the charge_point, the following command topic must be used : /ocpp/[your charger]/cmd
-
-where the schema for MQTT messages is : 
+Configure your OCPP charge point to connect to:
 
 ```
+ws://<server-ip>:<port>/<station-id>
+```
+
+Example: `ws://192.168.1.10:3000/charger1`
+
+## 📡 MQTT Topics
+
+### State Topics (Charger → MQTT)
+
+All charger data is published to: `<MQTT_BASEPATH>/<station-id>/state/<parameter>`
+
+| Topic | Description |
+|-------|-------------|
+| `.../state/heartbeat` | Connection heartbeat |
+| `.../state/last_seen` | Last communication timestamp |
+| `.../state/status` | Current charger status |
+| `.../state/error_code` | Current error code |
+| `.../state/charge_point_vendor` | Charger vendor |
+| `.../state/charge_point_model` | Charger model |
+| `.../state/firmware_version` | Firmware version |
+| `.../state/current_import` | Current (Amperes) |
+| `.../state/voltage` | Voltage (Volts) |
+| `.../state/power_active_import` | Active power (Watts) |
+| `.../state/energy_active_import_register` | Total energy (Wh) |
+| `.../state/meter_start` | Transaction start meter |
+| `.../state/meter_stop` | Transaction stop meter |
+
+### Command Topics (MQTT → Charger)
+
+Send commands to: `<MQTT_BASEPATH>/<station-id>/cmd`
+
+#### Message Schema
+
+```json
 {
-    "action": "the operation from the central_system to the charge_point",
-    "args" : "the standard operation payload according to OCPP"
+    "action": "<operation_name>",
+    "args": { <ocpp_payload> }
 }
 ```
 
+#### Available Commands
 
-
-as an exemple, here is a change_availability command to change the charger's availability:
-
-```
+**Change Availability**
+```json
 {
     "action": "change_availability",
-    "args" :
-        {
-            "connector_id": 1,
-            "type": "Operative"
-        }
-}
-
-```
-## Openhab integration
-
-Obviously, as this allows OCPP to be exposed via MQTT, it becomes easy to integrate it into any home automation system. Here is an example of integration with Openhab using the following .thing file:
-
-```
-Thing mqtt:topic:ocpp:grizzle "Grizzl-e charger" (mqtt:broker:myUnsecureBroker) [ availabilityTopic="ocpp/charger1/state/heartbeat" ] {
-    Channels:
-        Type switch : heartbeat                     "heartbeat"                     [ stateTopic = "ocpp/charger1/state/heartbeat" ]
-        Type datetime : last_seen                   "last_seen"                     [ stateTopic = "ocpp/charger1/state/last_seen" ]
-        Type string : charge_point_vendor           "charge_point_vendor"           [ stateTopic = "ocpp/charger1/state/charge_point_vendor" ]
-        Type string : charge_point_model            "charge_point_model"            [ stateTopic = "ocpp/charger1/state/charge_point_model" ]
-        Type string : charge_point_serial_number    "charge_point_serial_number"    [ stateTopic = "ocpp/charger1/state/charge_point_serial_number" ]
-        Type string : firmware_version              "firmware_version"              [ stateTopic = "ocpp/charger1/state/firmware_version" ]
-        Type string : error_code                    "error_code"                    [ stateTopic = "ocpp/charger1/state/error_code" ]
-        Type string : status                        "status"                        [ stateTopic = "ocpp/charger1/state/status" ]
-        Type string : meter_type                    "meter_type"                    [ stateTopic = "ocpp/charger1/state/meter_type" ]
-        Type number : current_import                "current_import"                [ stateTopic = "ocpp/charger1/state/current_import" ]
-        Type number : voltage                       "voltage"                       [ stateTopic = "ocpp/charger1/state/voltage" ]
-        Type number : power_active_import           "power_active_import"           [ stateTopic = "ocpp/charger1/state/power_active_import" ]
-        Type number : energy_active_import_register "energy_active_import_register" [ stateTopic = "ocpp/charger1/state/energy_active_import_register" ]
-        Type string : reason                        "reason"                        [ stateTopic = "ocpp/charger1/state/reason" ]
-
-        Type number : meter_start                   "meter_start"                   [ stateTopic = "ocpp/charger1/state/meter_start" ]
-        Type datetime : meter_start_timestamp       "meter_start_timestamp"         [ stateTopic = "ocpp/charger1/state/meter_start_timestamp" ]	
-        Type number : meter_stop                    "meter_stop"                    [ stateTopic = "ocpp/charger1/state/meter_stop" ]
-        Type datetime : meter_stop_timestamp        "meter_stop_timestamp"          [ stateTopic = "ocpp/charger1/state/meter_stop_timestamp" ]
-        Type string : meter_stop_reason             "meter_stop_reason"             [ stateTopic = "ocpp/charger1/state/meter_stop_reason" ]
-        
-        Type number : meter_diff                    "meter_diff"    
-        Type number : meter_cost                    "meter_cost"    
-
-        Type string : action                        "action"                         //True command channel
-        Type string : cmd                           "cmd"                           [ stateTopic = "ocpp/charger1/cmd" ]
-        Type string : cmd_result                    "cmd_result"                    [ stateTopic = "ocpp/charger1/cmd_result/status" ]   
-        
+    "args": {
+        "connector_id": 1,
+        "type": "Operative"
+    }
 }
 ```
 
+**Remote Start Transaction**
+```json
+{
+    "action": "remote_start_transaction",
+    "args": {
+        "connector_id": 1,
+        "id_tag": "your-rfid-tag"
+    }
+}
+```
 
-ContributingContributions are welcome! Please fork the repository and submit a pull request.
-LicenseThis project is licensed under the MIT License - see the LICENSE file for details.
-Acknowledgements- Thanks to the open-source community for their contributions.
-- Special thanks to the developers of OCPP and MQTT libraries.
+**Remote Stop Transaction**
+```json
+{
+    "action": "remote_stop_transaction",
+    "args": {
+        "transaction_id": 1
+    }
+}
+```
+
+**Reset**
+```json
+{
+    "action": "reset",
+    "args": {
+        "type": "Soft"
+    }
+}
+```
+
+**Unlock Connector**
+```json
+{
+    "action": "unlock_connector",
+    "args": {
+        "connector_id": 1
+    }
+}
+```
+
+### Command Result
+
+Command results are published to: `<MQTT_BASEPATH>/<station-id>/cmd_result/status`
+
+## 📝 Logging
+
+ocpp2mqtt supports flexible logging configuration with both console and file output.
+
+### Console Only (Default)
+
+By default, logs are only output to the console:
+
+```bash
+LOG_LEVEL=INFO python central_system.py
+```
+
+### File Logging
+
+Enable file logging by setting `LOG_FILE`:
+
+```bash
+LOG_FILE=/var/log/ocpp2mqtt/app.log python central_system.py
+```
+
+### Log Rotation
+
+When file logging is enabled, logs are automatically rotated:
+- Maximum file size: `LOG_MAX_SIZE` (default: 10MB)
+- Backup files kept: `LOG_BACKUP_COUNT` (default: 5)
+
+### Docker with File Logging
+
+```bash
+docker run -d \
+  --name ocpp2mqtt \
+  -p 3000:3000 \
+  -e MQTT_HOSTNAME=broker \
+  -e LOG_FILE=/var/log/ocpp2mqtt/app.log \
+  -v /path/to/logs:/var/log/ocpp2mqtt \
+  ocpp2mqtt
+```
+
+## 📚 Integration Guides
+
+Detailed integration guides are available for popular home automation platforms:
+
+- **[Home Assistant](docs/homeassistant/README.md)** - MQTT sensors, automations, and energy dashboard integration
+- **[OpenHAB](docs/openhab/README.md)** - Things, Items, Rules, and Sitemap configuration
+- **[Kubernetes](docs/kubernetes/README.md)** - Deployment, ConfigMaps, Secrets, and Ingress setup
+
+## 🤝 Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Running Tests
+
+```bash
+pytest tests/ -v
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgements
+
+- Thanks to the open-source community for their contributions
+- Special thanks to the developers of the [OCPP](https://github.com/mobilityhouse/ocpp) and [aiomqtt](https://github.com/sbtinstruments/aiomqtt) libraries
+- Based on initial work from [ocpp-mqtt](https://github.com/rzylius/ocpp-mqtt)

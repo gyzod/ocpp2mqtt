@@ -16,7 +16,8 @@ from ocpp.v16 import ChargePoint as cp
 from ocpp.v16.enums import AuthorizationStatus, Action, RegistrationStatus
 from ocpp.v16 import call_result
 
-logging.basicConfig(level=logging.INFO)
+# Use logger from logging_config (configured by central_system.py)
+logger = logging.getLogger(__name__)
 
 load_dotenv(verbose=True)
 MQTT_HOSTNAME=os.getenv('MQTT_HOSTNAME', 'localhost')
@@ -92,10 +93,27 @@ class ChargePoint(cp):
     def _has_active_websocket(self):
         connection = getattr(self, "_connection", None)
         if connection:
+            # Debug logging
+            logging.info(f"DEBUG: connection type: {type(connection)}")
+            
             if hasattr(connection, 'state'):
-                return connection.state == State.OPEN
-            elif hasattr(connection, 'closed'):
+                logging.info(f"DEBUG: connection.state: {connection.state}")
+                # websockets 14+ uses State enum. State.OPEN is 1.
+                # We check for the enum member or the value 1.
+                is_open = (connection.state == State.OPEN) or (connection.state == 1)
+                logging.info(f"DEBUG: is_open based on state: {is_open}")
+                return is_open
+            
+            if hasattr(connection, 'open'):
+                logging.info(f"DEBUG: connection.open: {connection.open}")
+                return connection.open
+
+            if hasattr(connection, 'closed'):
+                logging.info(f"DEBUG: connection.closed: {connection.closed}")
                 return not connection.closed
+                
+        else:
+            logging.info("DEBUG: No connection object found")
         return False
 
     def is_charging_enabled(self):
@@ -218,6 +236,8 @@ class ChargePoint(cp):
         await self.push_state_value_mqtt('status', status)
         await self.push_state_value_mqtt('connector_id', connector_id)
         await self.push_state_value_mqtt('connection_state', 'CONNECTED')
+        await self.push_state_value_mqtt('last_status_change', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
+        await self.push_state_value_mqtt('last_seen', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
         await self.push_state_values_mqtt(**kwargs)
 
         if status != "Charging":
@@ -246,11 +266,6 @@ class ChargePoint(cp):
    
     # MQTT implementation
     ## MQTT publish
-    def get_mqttpath(self):
-        mqtt_path = MQTT_BASEPATH
-        if MQTT_USESTATIONNAME == "true":
-            mqtt_path +=self.id
-        return mqtt_path
 
     async def push_state_values_mqtt(self,**kwargs):
         mqtt_path = self.get_mqttpath()
@@ -293,7 +308,10 @@ class ChargePoint(cp):
                     await client.subscribe(f"{mqtt_path}/cmd/#")
                     async for message in client.messages:
                         try:
-                            payload = message.payload.decode("utf-8")
+                            if isinstance(message.payload, bytes):
+                                payload = message.payload.decode("utf-8")
+                            else:
+                                payload = str(message.payload)
                             logging.info("<-- MQTT msg received : %s", payload)
                             msg = JSON.loads(payload)
                         except (UnicodeDecodeError, JSON.JSONDecodeError) as decode_error:

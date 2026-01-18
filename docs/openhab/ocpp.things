@@ -1,0 +1,39 @@
+Thing mqtt:topic:ocpp:grizzle "Grizzl-e charger" (mqtt:broker:myUnsecureBroker) [ availabilityTopic="ocpp/charger1/state/heartbeat" ] {
+    Channels:
+        Type switch : heartbeat                                 "heartbeat"                     [ stateTopic = "ocpp/charger1/state/heartbeat" ]
+        Type datetime : last_seen                               "last_seen"                     [ stateTopic = "ocpp/charger1/state/last_seen" ]
+        Type string : charge_point_vendor                       "charge_point_vendor"           [ stateTopic = "ocpp/charger1/state/charge_point_vendor" ]
+        Type string : charge_point_model                        "charge_point_model"            [ stateTopic = "ocpp/charger1/state/charge_point_model" ]
+        Type string : charge_point_serial_number                "charge_point_serial_number"    [ stateTopic = "ocpp/charger1/state/charge_point_serial_number" ]
+        Type string : firmware_version                          "firmware_version"              [ stateTopic = "ocpp/charger1/state/firmware_version" ]
+        Type string : error_code                                "error_code"                    [ stateTopic = "ocpp/charger1/state/error_code" ]
+        Type string : status                                    "status"                        [ stateTopic = "ocpp/charger1/state/status" ]
+        Type string : meter_type                                "meter_type"                    [ stateTopic = "ocpp/charger1/state/meter_type" ]
+        Type number : current_import                            "current_import"                [ stateTopic = "ocpp/charger1/state/current_import" ]
+        Type number : voltage                                   "voltage"                       [ stateTopic = "ocpp/charger1/state/voltage" ]
+        Type number : power_active_import                       "power_active_import"           [ stateTopic = "ocpp/charger1/state/power_active_import" ]
+        Type number : energy_active_import_register             "energy_active_import_register" [ stateTopic = "ocpp/charger1/state/energy_active_import_register" ]
+        Type string : reason                                    "reason"                        [ stateTopic = "ocpp/charger1/state/reason" ]
+
+        Type number : meter_start                               "meter_start"                   [ stateTopic = "ocpp/charger1/state/meter_start" ]
+        Type datetime : meter_start_timestamp                   "meter_start_timestamp"         [ stateTopic = "ocpp/charger1/state/meter_start_timestamp" ]	
+        Type number : meter_stop                                "meter_stop"                    [ stateTopic = "ocpp/charger1/state/meter_stop" ]
+        Type datetime : meter_stop_timestamp                    "meter_stop_timestamp"          [ stateTopic = "ocpp/charger1/state/meter_stop_timestamp" ]
+        Type string : meter_stop_reason                         "meter_stop_reason"             [ stateTopic = "ocpp/charger1/state/meter_stop_reason" ]
+
+        Type number : meter_diff                                "meter_diff"    
+        Type number : meter_cost                                "meter_cost"  
+        Type number : meter_cost_cumulative                     "meter_cost_cumulative"
+
+        Type string : action                                    "action"                     
+        Type string : cmd                                       "cmd"                           [ stateTopic = "ocpp/charger1/cmd" ]
+        Type string : cmd_result                                "cmd_result"                    [ stateTopic = "ocpp/charger1/cmd_result/status" ]   
+
+        // logical switch to enable/disable charging              
+        Type switch : charging_enabled                          "charging_enabled"              [ stateTopic = "ocpp/charger1/state/charging_enabled", commandTopic = "ocpp/charger1/cmd/", formatBeforePublish="{\"action\": \"charging_enabled\", \"args\": \"%s\"}" ]      
+        Type string : charging_schedule                         "charging_schedule"           
+        Type number : energy_active_import_register_percentage  "energy_active_import_register_percentage"
+        Type number : energy_cumulative_import_register         "energy_cumulative_import_register"
+        Type switch : charge_completed                          "charge_completed"
+        Type switch : notifications_enabled                     "notifications_enabled"         
+}

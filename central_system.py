@@ -11,6 +11,10 @@ import urllib.parse
 from dotenv import load_dotenv
 import signal
 
+# Configure logging before other imports
+from logging_config import configure_root_logging
+configure_root_logging()
+
 # check dependancies
 try:
     import websockets
@@ -22,8 +26,6 @@ except ModuleNotFoundError:
 
 from charge_point import ChargePoint
 from websockets.typing import Subprotocol
-
-logging.basicConfig(level=logging.INFO)
 
 load_dotenv(verbose=True)
 
