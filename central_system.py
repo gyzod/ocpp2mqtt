@@ -11,6 +11,9 @@ import urllib.parse
 from dotenv import load_dotenv
 import signal
 
+# Version information
+from version import __version__, get_banner
+
 # Configure logging before other imports
 from logging_config import configure_root_logging
 configure_root_logging()
@@ -105,6 +108,10 @@ class SignalHandler:
 
 
 async def main():
+    # Display startup banner
+    print(get_banner())
+    logging.info("Starting ocpp2mqtt version %s", __version__)
+    
     server = await websockets.serve(
         on_connect,
         LISTEN_ADDR,
@@ -112,7 +119,7 @@ async def main():
         subprotocols=[Subprotocol("ocpp1.6")],
         ping_timeout=None,
     )
-    logging.info("Server Started listening to new ocpp connections...")
+    logging.info("Server listening on %s:%s for OCPP connections...", LISTEN_ADDR, LISTEN_PORT)
     await server.wait_closed()
 
 signal_handler = SignalHandler()   

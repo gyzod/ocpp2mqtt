@@ -34,6 +34,10 @@ MQTT_CLIENT_ID=os.getenv('MQTT_CLIENT_ID', None)
 MQTT_WEBSOCKET_PATH=os.getenv('MQTT_WEBSOCKET_PATH', None)
 MQTT_USESTATIONNAME=os.getenv('MQTT_USESTATIONNAME', None)
 
+# OCPP command retry configuration
+OCPP_COMMAND_RETRY_ATTEMPTS=int(os.getenv('OCPP_COMMAND_RETRY_ATTEMPTS', '5'))
+OCPP_COMMAND_RETRY_BASE_DELAY=float(os.getenv('OCPP_COMMAND_RETRY_BASE_DELAY', '0.3'))
+
 _MQTT_ALLOWED_TRANSPORTS = {'tcp', 'websockets', 'unix'}
 if MQTT_TRANSPORT not in _MQTT_ALLOWED_TRANSPORTS:
     logging.warning("Unsupported MQTT_TRANSPORT '%s'. Falling back to 'tcp'", MQTT_TRANSPORT)
@@ -91,36 +95,30 @@ class ChargePoint(cp):
         return options
 
     def _has_active_websocket(self):
+        """Check if the OCPP WebSocket connection is active."""
         connection = getattr(self, "_connection", None)
         if connection:
-            # Debug logging
-            logging.info(f"DEBUG: connection type: {type(connection)}")
-            
             if hasattr(connection, 'state'):
-                logging.info(f"DEBUG: connection.state: {connection.state}")
                 # websockets 14+ uses State enum. State.OPEN is 1.
-                # We check for the enum member or the value 1.
                 is_open = (connection.state == State.OPEN) or (connection.state == 1)
-                logging.info(f"DEBUG: is_open based on state: {is_open}")
+                logging.debug("WebSocket state: %s, is_open: %s", connection.state, is_open)
                 return is_open
             
             if hasattr(connection, 'open'):
-                logging.info(f"DEBUG: connection.open: {connection.open}")
+                logging.debug("WebSocket open: %s", connection.open)
                 return connection.open
 
             if hasattr(connection, 'closed'):
-                logging.info(f"DEBUG: connection.closed: {connection.closed}")
+                logging.debug("WebSocket closed: %s", connection.closed)
                 return not connection.closed
                 
-        else:
-            logging.info("DEBUG: No connection object found")
+        logging.debug("No WebSocket connection object found")
         return False
 
     def is_charging_enabled(self):
         return (self.charging_enabled == "ON")
 
     def get_transaction_id(self):
-        #self.transaction_id += 1
         return self.transaction_id
 
     def get_mqttpath(self):
@@ -194,6 +192,9 @@ class ChargePoint(cp):
     @on(Action.meter_values)
     async def on_meter_values(self, **kwargs):
         logging.info('---> Meter values')
+
+        self.transaction_id = kwargs.get('transaction_id', self.transaction_id)        
+        await self.push_state_value_mqtt('transaction_id', self.transaction_id)
         
         for i in kwargs['meter_value'][0]['sampled_value']:
             measure = (i['measurand']).replace('.','_').lower()
@@ -347,6 +348,25 @@ class ChargePoint(cp):
             logging.info("Reconnecting to MQTT in %s seconds...", wait_time)
             await asyncio.sleep(wait_time)
 
+    async def _wait_for_websocket_connection(self, action: str) -> bool:
+        """
+        Wait for WebSocket connection to become available with exponential backoff.
+        Returns True if connection is available, False otherwise.
+        """
+        for attempt in range(OCPP_COMMAND_RETRY_ATTEMPTS):
+            if self._has_active_websocket():
+                if attempt > 0:
+                    logging.info("WebSocket reconnected after %d attempt(s) for action '%s'", attempt, action)
+                return True
+            
+            if attempt < OCPP_COMMAND_RETRY_ATTEMPTS - 1:
+                delay = OCPP_COMMAND_RETRY_BASE_DELAY * (2 ** attempt)
+                logging.debug("WebSocket not ready for '%s', retry %d/%d in %.2fs", 
+                             action, attempt + 1, OCPP_COMMAND_RETRY_ATTEMPTS, delay)
+                await asyncio.sleep(delay)
+        
+        return False
+
     async def _handle_mqtt_action(self, msg):
         action = msg.get('action')
         args = self.get_args(msg)
@@ -356,7 +376,10 @@ class ChargePoint(cp):
             logging.info("<-- Charging enabled : %s", self.charging_enabled)
             return None
 
-        if not self._has_active_websocket():
+        # Wait for WebSocket with retry mechanism to handle brief reconnections
+        if not await self._wait_for_websocket_connection(action):
+            logging.warning("WebSocket not available after %d retries for action '%s'", 
+                          OCPP_COMMAND_RETRY_ATTEMPTS, action)
             raise RuntimeError('Charge point websocket is not connected')
 
         action_map = {

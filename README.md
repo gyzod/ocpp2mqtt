@@ -1,5 +1,6 @@
 # ocpp2mqtt
 
+[![Version](https://img.shields.io/badge/version-1.0b-blue.svg)](https://github.com/gyzod/ocpp2mqtt/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
@@ -117,6 +118,13 @@ Create a `.env` file or set environment variables:
 | `LISTEN_ADDR` | `0.0.0.0` | Address to bind the OCPP WebSocket server |
 | `LISTEN_PORT` | `3000` | Port to listen for OCPP connections |
 | `AUTHORIZED_TAG_ID_LIST` | `[]` | JSON array of authorized RFID tags |
+
+### OCPP Command Retry Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OCPP_COMMAND_RETRY_ATTEMPTS` | `5` | Number of retry attempts when WebSocket is temporarily disconnected |
+| `OCPP_COMMAND_RETRY_BASE_DELAY` | `0.3` | Base delay in seconds between retries (exponential backoff) |
 
 ### Logging Configuration
 
