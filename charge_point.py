@@ -97,22 +97,41 @@ class ChargePoint(cp):
     def _has_active_websocket(self):
         """Check if the OCPP WebSocket connection is active."""
         connection = getattr(self, "_connection", None)
-        if connection:
-            if hasattr(connection, 'state'):
-                # websockets 14+ uses State enum. State.OPEN is 1.
-                is_open = (connection.state == State.OPEN) or (connection.state == 1)
-                logging.debug("WebSocket state: %s, is_open: %s", connection.state, is_open)
-                return is_open
-            
-            if hasattr(connection, 'open'):
-                logging.debug("WebSocket open: %s", connection.open)
-                return connection.open
+        if connection is None:
+            logging.debug("No WebSocket connection object found")
+            return False
+        
+        # Try multiple ways to check connection state for compatibility
+        # with different websockets library versions
+        
+        # Method 1: Check state attribute (websockets 10+)
+        if hasattr(connection, 'state'):
+            state = connection.state
+            # State.OPEN is 1, State.CLOSING is 2, State.CLOSED is 3
+            # We consider OPEN and CLOSING as "usable" for sending final messages
+            is_open = (state == State.OPEN) or (state == 1)
+            logging.debug("WebSocket state check: state=%s, is_open=%s", state, is_open)
+            return is_open
+        
+        # Method 2: Check open property (older websockets)
+        if hasattr(connection, 'open'):
+            is_open = bool(connection.open)
+            logging.debug("WebSocket open property: %s", is_open)
+            return is_open
 
-            if hasattr(connection, 'closed'):
-                logging.debug("WebSocket closed: %s", connection.closed)
-                return not connection.closed
+        # Method 3: Check closed property (fallback)
+        if hasattr(connection, 'closed'):
+            is_open = not connection.closed
+            logging.debug("WebSocket closed property: %s, is_open=%s", connection.closed, is_open)
+            return is_open
+        
+        # Method 4: Try to check if connection object is still valid
+        # by checking if it has a send method (last resort)
+        if hasattr(connection, 'send') and callable(connection.send):
+            logging.debug("WebSocket has send method, assuming connected")
+            return True
                 
-        logging.debug("No WebSocket connection object found")
+        logging.debug("Could not determine WebSocket state")
         return False
 
     def is_charging_enabled(self):
@@ -359,11 +378,24 @@ class ChargePoint(cp):
                     logging.info("WebSocket reconnected after %d attempt(s) for action '%s'", attempt, action)
                 return True
             
+            # Log connection state for debugging
+            connection = getattr(self, "_connection", None)
+            state_info = "None"
+            if connection:
+                if hasattr(connection, 'state'):
+                    state_info = f"state={connection.state}"
+                elif hasattr(connection, 'open'):
+                    state_info = f"open={connection.open}"
+                elif hasattr(connection, 'closed'):
+                    state_info = f"closed={connection.closed}"
+            
             if attempt < OCPP_COMMAND_RETRY_ATTEMPTS - 1:
                 delay = OCPP_COMMAND_RETRY_BASE_DELAY * (2 ** attempt)
-                logging.debug("WebSocket not ready for '%s', retry %d/%d in %.2fs", 
-                             action, attempt + 1, OCPP_COMMAND_RETRY_ATTEMPTS, delay)
+                logging.info("WebSocket not ready for '%s' (%s), retry %d/%d in %.2fs", 
+                            action, state_info, attempt + 1, OCPP_COMMAND_RETRY_ATTEMPTS, delay)
                 await asyncio.sleep(delay)
+            else:
+                logging.warning("WebSocket check failed for '%s' (%s), no more retries", action, state_info)
         
         return False
 

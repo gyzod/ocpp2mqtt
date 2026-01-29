@@ -35,6 +35,25 @@ load_dotenv(verbose=True)
 LISTEN_ADDR=os.getenv('LISTEN_ADDR', '0.0.0.0') 
 LISTEN_PORT=int(os.getenv('LISTEN_PORT', 3000)) 
 
+# Registry of active charge point sessions to handle reconnections
+_active_sessions: dict[str, asyncio.Task] = {}
+_sessions_lock = asyncio.Lock()
+
+
+async def _cleanup_old_session(charge_point_id: str):
+    """Cancel any existing session for this charge point ID."""
+    async with _sessions_lock:
+        if charge_point_id in _active_sessions:
+            old_task = _active_sessions[charge_point_id]
+            if not old_task.done():
+                logging.info("Cancelling old session for %s (reconnection detected)", charge_point_id)
+                old_task.cancel()
+                try:
+                    await asyncio.wait_for(asyncio.shield(old_task), timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+            del _active_sessions[charge_point_id]
+
 
 async def on_connect(websocket: websockets.ServerConnection):
 
@@ -80,16 +99,38 @@ async def on_connect(websocket: websockets.ServerConnection):
 
     if not charge_point_id:
         host, port = (websocket.remote_address or ("unknown", "0"))
-        charge_point_id = f"cp_{host}_{port}"
-        logging.warning("No charge point station provided, fallback id %s", charge_point_id)
+        # Use only host IP as fallback ID (not port) to handle reconnections gracefully
+        # The port changes on each reconnection, causing duplicate ChargePoint instances
+        charge_point_id = f"cp_{host}"
+        logging.warning("No charge point station provided, fallback id %s (from %s:%s)", charge_point_id, host, port)
 
     logging.info("Charge Point ID: %s", charge_point_id)
 
+    # Clean up any existing session for this charge point (handles reconnections)
+    await _cleanup_old_session(charge_point_id)
+
     cpSession = ChargePoint(charge_point_id, websocket)
     
-    await asyncio.gather(cpSession.mqtt_listen(), cpSession.start())
+    # Create and register the session task
+    async def run_session():
+        try:
+            await asyncio.gather(cpSession.mqtt_listen(), cpSession.start())
+        except asyncio.CancelledError:
+            logging.info("Session cancelled for %s", charge_point_id)
+        finally:
+            async with _sessions_lock:
+                if charge_point_id in _active_sessions:
+                    del _active_sessions[charge_point_id]
+            logging.info("Session ended for %s", charge_point_id)
+    
+    session_task = asyncio.create_task(run_session())
+    async with _sessions_lock:
+        _active_sessions[charge_point_id] = session_task
+    
+    # Wait for the session to complete
+    await session_task
 
-    logging.info("Chargepoint session instance successfully created")
+    logging.info("Chargepoint session completed for %s", charge_point_id)
 
 class SignalHandler:
     shutdown_requested = False
