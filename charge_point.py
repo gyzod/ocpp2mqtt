@@ -66,10 +66,16 @@ class ChargePoint(cp):
     status = "Unknown"
     client = None
     charging_enabled = "OFF"
+    _shutdown = False
+    _websocket_connected = False
+    _connection_announced = False
 
     def __init__(self, id, connection, response_timeout=30):
         super().__init__(id, connection, response_timeout)
         self.charging_enabled = "OFF"
+        self._shutdown = False
+        self._websocket_connected = False
+        self._connection_announced = False
         
     def _mqtt_identifier(self):
         base_identifier = MQTT_CLIENT_ID or f"ocpp2mqtt-{self.id}"
@@ -136,6 +142,23 @@ class ChargePoint(cp):
 
     def is_charging_enabled(self):
         return (self.charging_enabled == "ON")
+
+    def _normalize_charging_enabled(self, value):
+        """Normalize charging_enabled payloads to 'ON' or 'OFF'."""
+        if isinstance(value, bool):
+            return "ON" if value else "OFF"
+
+        if isinstance(value, (int, float)):
+            return "ON" if value else "OFF"
+
+        if isinstance(value, str):
+            normalized = value.strip().upper()
+            if normalized in {"ON", "TRUE", "1", "YES", "Y"}:
+                return "ON"
+            if normalized in {"OFF", "FALSE", "0", "NO", "N"}:
+                return "OFF"
+
+        return "OFF"
 
     def get_transaction_id(self):
         return self.transaction_id
@@ -311,11 +334,45 @@ class ChargePoint(cp):
         except MqttError as exc:
             logging.warning("MQTT publish to %s failed: %s", topic, exc)
 
+    def shutdown(self):
+        """Signal the MQTT loop to stop."""
+        self._shutdown = True
+        self._websocket_connected = False
+        logging.info("Shutdown requested for %s", self.id)
+
+    async def on_websocket_connected(self):
+        """Called when WebSocket connection is established."""
+        self._websocket_connected = True
+        logging.info("WebSocket connected for %s", self.id)
+        await self.push_state_value_mqtt('connection_state', 'CONNECTED')
+        await self.push_state_value_mqtt('last_connected', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
+        self._connection_announced = True
+
+    async def on_websocket_disconnected(self, reason: str = "unknown"):
+        """Called when WebSocket connection is lost."""
+        was_connected = self._websocket_connected
+        self._websocket_connected = False
+        logging.info("WebSocket disconnected for %s (reason: %s)", self.id, reason)
+        
+        # Only publish disconnection if we had announced a connection
+        if was_connected or self._connection_announced:
+            await self.push_state_value_mqtt('connection_state', 'DISCONNECTED')
+            await self.push_state_value_mqtt('last_disconnected', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
+            await self.push_state_value_mqtt('disconnect_reason', reason)
+            # Reset power values on disconnect
+            await self.push_state_value_mqtt('power_active_import', 0)
+            await self.push_state_value_mqtt('current_import', 0)
+            self._connection_announced = False
+
+    def is_websocket_connected(self) -> bool:
+        """Check if WebSocket is currently connected."""
+        return self._websocket_connected and self._has_active_websocket()
+
     ## received events from MQTT
     async def mqtt_listen(self):
         logging.info("Starting MQTT loop for %s", self.id)
         reconnect_delay = MQTT_RECONNECT_BASE_DELAY
-        while True:
+        while not self._shutdown:
             try:
                 async with Client(hostname=MQTT_HOSTNAME,
                                   port=MQTT_PORT,
@@ -327,6 +384,9 @@ class ChargePoint(cp):
                     mqtt_path = self.get_mqttpath()
                     await client.subscribe(f"{mqtt_path}/cmd/#")
                     async for message in client.messages:
+                        if self._shutdown:
+                            logging.info("MQTT loop shutdown requested for %s", self.id)
+                            break
                         try:
                             if isinstance(message.payload, bytes):
                                 payload = message.payload.decode("utf-8")
@@ -341,6 +401,8 @@ class ChargePoint(cp):
                         try:
                             result = await self._handle_mqtt_action(msg)
                         except asyncio.CancelledError:
+                            logging.info("MQTT action cancelled for %s", self.id)
+                            self._shutdown = True
                             raise
                         except Exception as action_error:
                             logging.error("MQTT action %s failed: %s", msg.get('action'), action_error)
@@ -354,18 +416,30 @@ class ChargePoint(cp):
                             except Exception as e:
                                 logging.error("Error publishing call result to MQTT : %s", e)
             except asyncio.CancelledError:
+                logging.info("MQTT loop cancelled for %s", self.id)
+                self._shutdown = True
                 raise
             except MqttError as e:
+                if self._shutdown:
+                    logging.info("MQTT disconnected during shutdown for %s", self.id)
+                    break
                 logging.warning("MQTT error (%s): %s", type(e).__name__, e)
             except Exception as e:
+                if self._shutdown:
+                    break
                 logging.error("Unexpected MQTT loop error (%s): %s", type(e).__name__, e)
             finally:
                 self.client = None
+
+            if self._shutdown:
+                break
 
             wait_time = reconnect_delay
             reconnect_delay = min(reconnect_delay * 2, MQTT_RECONNECT_MAX_DELAY)
             logging.info("Reconnecting to MQTT in %s seconds...", wait_time)
             await asyncio.sleep(wait_time)
+        
+        logging.info("MQTT loop stopped for %s", self.id)
 
     async def _wait_for_websocket_connection(self, action: str) -> bool:
         """
@@ -404,7 +478,7 @@ class ChargePoint(cp):
         args = self.get_args(msg)
 
         if action == 'charging_enabled':
-            self.charging_enabled = args
+            self.charging_enabled = self._normalize_charging_enabled(args)
             logging.info("<-- Charging enabled : %s", self.charging_enabled)
             return None
 

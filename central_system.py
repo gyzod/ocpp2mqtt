@@ -8,8 +8,10 @@ import logging
 import sys
 import os
 import urllib.parse
+import json
 from dotenv import load_dotenv
 import signal
+from datetime import datetime, timezone
 
 # Version information
 from version import __version__, get_banner
@@ -21,6 +23,7 @@ configure_root_logging()
 # check dependancies
 try:
     import websockets
+    import websockets.exceptions
 except ModuleNotFoundError:
     logging.error("This example relies on the 'websockets' package.")
     logging.error("Please install it by running: ")
@@ -33,7 +36,18 @@ from websockets.typing import Subprotocol
 load_dotenv(verbose=True)
 
 LISTEN_ADDR=os.getenv('LISTEN_ADDR', '0.0.0.0') 
-LISTEN_PORT=int(os.getenv('LISTEN_PORT', 3000)) 
+LISTEN_PORT=int(os.getenv('LISTEN_PORT', 3000))
+
+# Expected charge points - publish DISCONNECTED state on startup
+_raw_expected_cps = os.getenv('EXPECTED_CHARGE_POINTS', '[]')
+try:
+    EXPECTED_CHARGE_POINTS = json.loads(_raw_expected_cps)
+    if not isinstance(EXPECTED_CHARGE_POINTS, list):
+        logging.warning("EXPECTED_CHARGE_POINTS should be a JSON array, ignoring")
+        EXPECTED_CHARGE_POINTS = []
+except json.JSONDecodeError:
+    logging.warning("Invalid EXPECTED_CHARGE_POINTS JSON, ignoring")
+    EXPECTED_CHARGE_POINTS = [] 
 
 # Registry of active charge point sessions to handle reconnections
 _active_sessions: dict[str, asyncio.Task] = {}
@@ -113,15 +127,36 @@ async def on_connect(websocket: websockets.ServerConnection):
     
     # Create and register the session task
     async def run_session():
+        disconnect_reason = "normal_closure"
         try:
+            # Announce connection established
+            await cpSession.on_websocket_connected()
             await asyncio.gather(cpSession.mqtt_listen(), cpSession.start())
         except asyncio.CancelledError:
             logging.info("Session cancelled for %s", charge_point_id)
+            disconnect_reason = "session_cancelled"
+            cpSession.shutdown()
+        except websockets.exceptions.ConnectionClosed as e:
+            disconnect_reason = f"connection_closed_{e.code}"
+            logging.warning("WebSocket connection closed for %s: %s", charge_point_id, e)
+        except websockets.exceptions.ConnectionClosedError as e:
+            disconnect_reason = f"connection_error_{e.code}"
+            logging.warning("WebSocket connection error for %s: %s", charge_point_id, e)
+        except Exception as e:
+            disconnect_reason = f"unexpected_error"
+            logging.error("Unexpected error in session for %s: %s", charge_point_id, e)
         finally:
+            # Announce disconnection before cleanup
+            try:
+                await cpSession.on_websocket_disconnected(disconnect_reason)
+            except Exception as e:
+                logging.warning("Failed to announce disconnection for %s: %s", charge_point_id, e)
+            # Ensure shutdown is called to stop MQTT loop
+            cpSession.shutdown()
             async with _sessions_lock:
                 if charge_point_id in _active_sessions:
                     del _active_sessions[charge_point_id]
-            logging.info("Session ended for %s", charge_point_id)
+            logging.info("Session ended for %s (reason: %s)", charge_point_id, disconnect_reason)
     
     session_task = asyncio.create_task(run_session())
     async with _sessions_lock:
@@ -148,10 +183,55 @@ class SignalHandler:
         return not self.shutdown_requested
 
 
+async def _publish_initial_disconnected_state():
+    """Publish DISCONNECTED state for all expected charge points on startup."""
+    if not EXPECTED_CHARGE_POINTS:
+        logging.debug("No expected charge points configured, skipping initial state publication")
+        return
+    
+    # Import here to avoid circular imports and get MQTT config
+    from charge_point import (
+        MQTT_HOSTNAME, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD, 
+        MQTT_BASEPATH, MQTT_USESTATIONNAME, MQTT_TRANSPORT,
+        MQTT_KEEPALIVE, MQTT_TIMEOUT
+    )
+    from aiomqtt import Client, MqttError
+    
+    try:
+        async with Client(
+            hostname=MQTT_HOSTNAME,
+            port=MQTT_PORT,
+            username=MQTT_USERNAME,
+            password=MQTT_PASSWORD,
+            identifier="ocpp2mqtt-startup",
+            transport=MQTT_TRANSPORT,
+            keepalive=MQTT_KEEPALIVE,
+            timeout=MQTT_TIMEOUT,
+        ) as client:
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+            
+            for cp_id in EXPECTED_CHARGE_POINTS:
+                mqtt_path = MQTT_BASEPATH
+                if MQTT_USESTATIONNAME == "true":
+                    mqtt_path += cp_id
+                
+                await client.publish(f"{mqtt_path}/state/connection_state", payload="DISCONNECTED", retain=True)
+                await client.publish(f"{mqtt_path}/state/service_started", payload=timestamp, retain=True)
+                logging.info("Published initial DISCONNECTED state for %s", cp_id)
+                
+    except MqttError as e:
+        logging.warning("Failed to publish initial disconnected states: %s", e)
+    except Exception as e:
+        logging.error("Unexpected error publishing initial states: %s", e)
+
+
 async def main():
     # Display startup banner
     print(get_banner())
     logging.info("Starting ocpp2mqtt version %s", __version__)
+    
+    # Publish initial DISCONNECTED state for expected charge points
+    await _publish_initial_disconnected_state()
     
     server = await websockets.serve(
         on_connect,

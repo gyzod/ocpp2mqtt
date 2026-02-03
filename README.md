@@ -16,6 +16,8 @@
 - 🔄 Automatic MQTT reconnection with exponential backoff
 - 🔐 MQTT authentication support
 - 🌐 WebSocket transport support for MQTT
+- 📡 Real-time charger connection state monitoring via MQTT
+- ⚡ Automatic disconnection detection with reason tracking
 
 ## 📋 Table of Contents
 
@@ -118,6 +120,7 @@ Create a `.env` file or set environment variables:
 | `LISTEN_ADDR` | `0.0.0.0` | Address to bind the OCPP WebSocket server |
 | `LISTEN_PORT` | `3000` | Port to listen for OCPP connections |
 | `AUTHORIZED_TAG_ID_LIST` | `[]` | JSON array of authorized RFID tags |
+| `EXPECTED_CHARGE_POINTS` | `[]` | JSON array of expected charge point IDs (publishes DISCONNECTED on startup) |
 
 ### OCPP Command Retry Configuration
 
@@ -152,6 +155,7 @@ MQTT_PASSWORD=
 LISTEN_PORT=3000
 LISTEN_ADDR=0.0.0.0
 AUTHORIZED_TAG_ID_LIST=["johnny-car","other-car"]
+EXPECTED_CHARGE_POINTS=["charger1","charger2"]
 
 # Logging Configuration
 LOG_LEVEL=INFO
@@ -186,6 +190,22 @@ Example: `ws://192.168.1.10:3000/charger1`
 
 All charger data is published to: `<MQTT_BASEPATH>/<station-id>/state/<parameter>`
 
+#### Connection State Topics
+
+These topics track the WebSocket connection between the charger and ocpp2mqtt:
+
+| Topic | Description | Values |
+|-------|-------------|--------|
+| `.../state/connection_state` | Current WebSocket connection state | `CONNECTED`, `DISCONNECTED` |
+| `.../state/last_connected` | Timestamp of last successful connection | ISO 8601 datetime |
+| `.../state/last_disconnected` | Timestamp of last disconnection | ISO 8601 datetime |
+| `.../state/disconnect_reason` | Reason for the last disconnection | See [Disconnect Reasons](#disconnect-reasons) |
+| `.../state/service_started` | Timestamp when ocpp2mqtt service started | ISO 8601 datetime |
+
+> **Note:** If `EXPECTED_CHARGE_POINTS` is configured, the service publishes `DISCONNECTED` state for each expected charger on startup, before any charger connects.
+
+#### Charger Data Topics
+
 | Topic | Description |
 |-------|-------------|
 | `.../state/heartbeat` | Connection heartbeat |
@@ -201,6 +221,20 @@ All charger data is published to: `<MQTT_BASEPATH>/<station-id>/state/<parameter
 | `.../state/energy_active_import_register` | Total energy (Wh) |
 | `.../state/meter_start` | Transaction start meter |
 | `.../state/meter_stop` | Transaction stop meter |
+
+#### Disconnect Reasons
+
+When a charger disconnects, the `disconnect_reason` topic indicates why:
+
+| Reason | Description |
+|--------|-------------|
+| `normal_closure` | Clean disconnection (charger initiated) |
+| `session_cancelled` | Session was cancelled (e.g., charger reconnected) |
+| `connection_closed_<code>` | WebSocket closed with specific code |
+| `connection_error_<code>` | WebSocket error with specific code |
+| `unexpected_error` | Unexpected error occurred |
+
+> **Note:** When a charger disconnects, `power_active_import` and `current_import` are automatically reset to `0`.
 
 ### Command Topics (MQTT → Charger)
 
@@ -272,6 +306,43 @@ Send commands to: `<MQTT_BASEPATH>/<station-id>/cmd`
 ### Command Result
 
 Command results are published to: `<MQTT_BASEPATH>/<station-id>/cmd_result/status`
+
+### Connection Monitoring
+
+ocpp2mqtt automatically monitors the WebSocket connection with each charger and publishes state changes to MQTT. This enables your home automation system to:
+
+- **Detect offline chargers** - Trigger alerts when a charger goes offline
+- **Track availability** - Know when chargers are available for use
+- **Monitor network issues** - Identify connection problems with specific chargers
+- **Automate recovery** - Trigger actions when a charger reconnects
+
+#### Example: Home Assistant Binary Sensor
+
+```yaml
+mqtt:
+  binary_sensor:
+    - name: "Charger Connection"
+      state_topic: "ocpp/charger1/state/connection_state"
+      payload_on: "CONNECTED"
+      payload_off: "DISCONNECTED"
+      device_class: connectivity
+```
+
+#### Example: Home Assistant Automation (Alert on Disconnect)
+
+```yaml
+automation:
+  - alias: "Charger Disconnected Alert"
+    trigger:
+      - platform: mqtt
+        topic: "ocpp/charger1/state/connection_state"
+        payload: "DISCONNECTED"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "⚠️ Charger Offline"
+          message: "Your EV charger has disconnected"
+```
 
 ## 📝 Logging
 

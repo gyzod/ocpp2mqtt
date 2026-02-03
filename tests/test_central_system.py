@@ -25,6 +25,9 @@ class FakeChargePoint:
         self.websocket = websocket
         self.started = False
         self.listened = False
+        self._shutdown = False
+        self._websocket_connected = False
+        self._connection_announced = False
         FakeChargePoint.instances.append(self)
 
     async def start(self):
@@ -32,6 +35,16 @@ class FakeChargePoint:
 
     async def mqtt_listen(self):
         self.listened = True
+
+    def shutdown(self):
+        self._shutdown = True
+
+    async def on_websocket_connected(self):
+        self._websocket_connected = True
+        self._connection_announced = True
+
+    async def on_websocket_disconnected(self, reason: str = "unknown"):
+        self._websocket_connected = False
 
 
 @pytest.mark.asyncio
