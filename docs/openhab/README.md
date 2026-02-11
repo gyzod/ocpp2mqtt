@@ -251,7 +251,7 @@ sitemap ocpp label="EV Charger Dashboard" {
     
     Frame label="Charging Control" {
         Switch item=Grizzle_charger_charging_enabled
-        Selection item=Grizzle_charger_action mappings={
+        Selection item=Grizzle_charger_action mappings=[
             "remote_start_transaction"="Start",
             "remote_stop_transaction"="Stop",
             "unlock_connector"="Unlock",
@@ -259,7 +259,7 @@ sitemap ocpp label="EV Charger Dashboard" {
             "reset_hard"="Hard Reset",
             "availability_operative"="Enable",
             "availability_inoperative"="Disable"
-        }
+        ]
     }
     
     Frame label="Cost & Energy" {
