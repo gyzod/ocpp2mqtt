@@ -34,9 +34,25 @@ MQTT_CLIENT_ID=os.getenv('MQTT_CLIENT_ID', None)
 MQTT_WEBSOCKET_PATH=os.getenv('MQTT_WEBSOCKET_PATH', None)
 MQTT_USESTATIONNAME=os.getenv('MQTT_USESTATIONNAME', None)
 
+# Grace period (seconds) after MQTT (re)connection during which retained
+# command messages are ignored. This prevents replaying a burst of old
+# commands (e.g. ChangeConfiguration) that the charge point may not support,
+# which previously caused timeouts and instability on every reconnection.
+MQTT_RETAINED_CMD_GRACE=float(os.getenv('MQTT_RETAINED_CMD_GRACE', '5'))
+
 # OCPP command retry configuration
 OCPP_COMMAND_RETRY_ATTEMPTS=int(os.getenv('OCPP_COMMAND_RETRY_ATTEMPTS', '5'))
 OCPP_COMMAND_RETRY_BASE_DELAY=float(os.getenv('OCPP_COMMAND_RETRY_BASE_DELAY', '0.3'))
+
+# Timeout for OCPP commands sent to the charge point (seconds). The ocpp
+# library default is 30s which is far too long for flaky connections — if the
+# charge point doesn't respond, we want to fail fast and move on.
+OCPP_COMMAND_TIMEOUT=float(os.getenv('OCPP_COMMAND_TIMEOUT', '10'))
+
+# Maximum number of concurrent OCPP commands sent to a single charge point.
+# Prevents a burst of MQTT commands from exhausting resources when the charge
+# point is slow or unresponsive.
+OCPP_MAX_CONCURRENT_COMMANDS=int(os.getenv('OCPP_MAX_CONCURRENT_COMMANDS', '3'))
 
 _MQTT_ALLOWED_TRANSPORTS = {'tcp', 'websockets', 'unix'}
 if MQTT_TRANSPORT not in _MQTT_ALLOWED_TRANSPORTS:
@@ -76,6 +92,10 @@ class ChargePoint(cp):
         self._shutdown = False
         self._websocket_connected = False
         self._connection_announced = False
+        # Semaphore to limit concurrent OCPP commands per charge point
+        self._command_semaphore = asyncio.Semaphore(OCPP_MAX_CONCURRENT_COMMANDS)
+        # Track pending command tasks so they can be cancelled on disconnect
+        self._pending_commands: set[asyncio.Task] = set()
         
     def _mqtt_identifier(self):
         base_identifier = MQTT_CLIENT_ID or f"ocpp2mqtt-{self.id}"
@@ -335,17 +355,25 @@ class ChargePoint(cp):
             logging.warning("MQTT publish to %s failed: %s", topic, exc)
 
     def shutdown(self):
-        """Signal the MQTT loop to stop."""
+        """Signal the MQTT loop to stop and cancel pending OCPP commands."""
         self._shutdown = True
         self._websocket_connected = False
+        # Cancel any pending OCPP commands so they don't linger for 30s
+        for task in self._pending_commands:
+            if not task.done():
+                task.cancel()
+        self._pending_commands.clear()
         logging.info("Shutdown requested for %s", self.id)
 
     async def on_websocket_connected(self):
-        """Called when WebSocket connection is established."""
+        """Called when WebSocket connection is established.
+
+        Note: We only set the flag here. The actual MQTT publish of
+        connection_state=CONNECTED happens in mqtt_listen() once the MQTT
+        client is ready, to avoid the race where self.client is still None.
+        """
         self._websocket_connected = True
         logging.info("WebSocket connected for %s", self.id)
-        await self.push_state_value_mqtt('connection_state', 'CONNECTED')
-        await self.push_state_value_mqtt('last_connected', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z")
         self._connection_announced = True
 
     async def on_websocket_disconnected(self, reason: str = "unknown"):
@@ -383,10 +411,41 @@ class ChargePoint(cp):
                     reconnect_delay = MQTT_RECONNECT_BASE_DELAY
                     mqtt_path = self.get_mqttpath()
                     await client.subscribe(f"{mqtt_path}/cmd/#")
+
+                    # Now that the MQTT client is ready, publish the connection
+                    # state if the WebSocket is connected. This fixes the race
+                    # where on_websocket_connected() ran before self.client was
+                    # set, causing "MQTT publish skipped, client unavailable".
+                    if self._websocket_connected:
+                        await self.push_state_value_mqtt('connection_state', 'CONNECTED')
+                        await self.push_state_value_mqtt(
+                            'last_connected',
+                            datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+                        )
+
+                    # Track when we (re)connected so we can ignore retained
+                    # command messages replayed by the broker during a grace
+                    # period. This prevents re-triggering a burst of unsupported
+                    # ChangeConfiguration commands on every reconnection.
+                    mqtt_connected_at = asyncio.get_event_loop().time()
+
                     async for message in client.messages:
                         if self._shutdown:
                             logging.info("MQTT loop shutdown requested for %s", self.id)
                             break
+
+                        # Skip retained command messages during the grace period
+                        # after (re)connection to avoid replaying stale commands
+                        is_retained = getattr(message, "retain", False)
+                        if is_retained:
+                            elapsed = asyncio.get_event_loop().time() - mqtt_connected_at
+                            if elapsed < MQTT_RETAINED_CMD_GRACE:
+                                logging.info(
+                                    "Ignoring retained command during grace period (%.1fs): %s",
+                                    elapsed, message.topic
+                                )
+                                continue
+
                         try:
                             if isinstance(message.payload, bytes):
                                 payload = message.payload.decode("utf-8")
@@ -399,22 +458,18 @@ class ChargePoint(cp):
                             continue
 
                         try:
-                            result = await self._handle_mqtt_action(msg)
+                            # Dispatch the command asynchronously so the MQTT
+                            # loop is not blocked while waiting for a slow/unresponsive
+                            # charge point. The semaphore limits concurrency.
+                            task = asyncio.create_task(
+                                self._process_mqtt_action(msg)
+                            )
+                            self._pending_commands.add(task)
+                            task.add_done_callback(self._pending_commands.discard)
                         except asyncio.CancelledError:
-                            logging.info("MQTT action cancelled for %s", self.id)
+                            logging.info("MQTT dispatch cancelled for %s", self.id)
                             self._shutdown = True
                             raise
-                        except Exception as action_error:
-                            logging.error("MQTT action %s failed: %s", msg.get('action'), action_error)
-                            await self._publish_command_error(msg, action_error)
-                            continue
-
-                        if result:
-                            logging.info("--> MQTT result : %s", result)
-                            try:
-                                await self.push_call_return_mqtt(vars(result))
-                            except Exception as e:
-                                logging.error("Error publishing call result to MQTT : %s", e)
             except asyncio.CancelledError:
                 logging.info("MQTT loop cancelled for %s", self.id)
                 self._shutdown = True
@@ -472,6 +527,43 @@ class ChargePoint(cp):
                 logging.warning("WebSocket check failed for '%s' (%s), no more retries", action, state_info)
         
         return False
+
+    async def _process_mqtt_action(self, msg):
+        """Process a single MQTT action with concurrency limiting and timeout.
+
+        This runs as a background task so the MQTT receive loop is not blocked
+        while waiting for a slow charge point response.
+        """
+        action = msg.get('action')
+        try:
+            async with self._command_semaphore:
+                result = await asyncio.wait_for(
+                    self._handle_mqtt_action(msg),
+                    timeout=OCPP_COMMAND_TIMEOUT,
+                )
+        except asyncio.TimeoutError:
+            logging.warning(
+                "OCPP command '%s' timed out after %ss for %s",
+                action, OCPP_COMMAND_TIMEOUT, self.id,
+            )
+            await self._publish_command_error(
+                msg, TimeoutError(f"Command '{action}' timed out after {OCPP_COMMAND_TIMEOUT}s")
+            )
+            return
+        except asyncio.CancelledError:
+            logging.info("OCPP command '%s' cancelled for %s", action, self.id)
+            raise
+        except Exception as action_error:
+            logging.error("MQTT action %s failed: %s", action, action_error)
+            await self._publish_command_error(msg, action_error)
+            return
+
+        if result:
+            logging.info("--> MQTT result : %s", result)
+            try:
+                await self.push_call_return_mqtt(vars(result))
+            except Exception as e:
+                logging.error("Error publishing call result to MQTT : %s", e)
 
     async def _handle_mqtt_action(self, msg):
         action = msg.get('action')
