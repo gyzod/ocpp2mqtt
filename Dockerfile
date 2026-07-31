@@ -4,7 +4,7 @@ FROM python:3.12-alpine
 # Version and metadata labels
 LABEL org.opencontainers.image.title="ocpp2mqtt"
 LABEL org.opencontainers.image.description="OCPP to MQTT Gateway for EV Charging Stations"
-LABEL org.opencontainers.image.version="1.0b"
+LABEL org.opencontainers.image.version="1.2b"
 LABEL org.opencontainers.image.source="https://github.com/gyzod/ocpp2mqtt"
 LABEL org.opencontainers.image.licenses="MIT"
 

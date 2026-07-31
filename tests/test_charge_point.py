@@ -1,3 +1,4 @@
+import asyncio
 import types
 from unittest.mock import AsyncMock, patch
 
@@ -511,3 +512,174 @@ async def test_publish_command_error(charge_point_with_mqtt):
     await charge_point_with_mqtt._publish_command_error(msg, error)
     
     assert charge_point_with_mqtt.client.publish.call_count >= 1
+
+
+# =============================================================================
+# Tests for command deduplication
+# =============================================================================
+
+def test_cmd_fingerprint_stable(charge_point):
+    """Same action+args always produces the same fingerprint."""
+    msg = {"action": "change_configuration", "args": {"key": "foo", "value": "bar"}}
+    assert charge_point._cmd_fingerprint(msg) == charge_point._cmd_fingerprint(msg)
+
+
+def test_cmd_fingerprint_different_actions(charge_point):
+    """Different actions produce different fingerprints."""
+    msg1 = {"action": "change_configuration", "args": {"key": "A"}}
+    msg2 = {"action": "clear_cache", "args": {"key": "A"}}
+    assert charge_point._cmd_fingerprint(msg1) != charge_point._cmd_fingerprint(msg2)
+
+
+def test_cmd_fingerprint_different_args(charge_point):
+    """Same action with different args produce different fingerprints."""
+    msg1 = {"action": "change_configuration", "args": {"key": "A", "value": "true"}}
+    msg2 = {"action": "change_configuration", "args": {"key": "B", "value": "true"}}
+    assert charge_point._cmd_fingerprint(msg1) != charge_point._cmd_fingerprint(msg2)
+
+
+def test_cmd_fingerprint_arg_order_invariant(charge_point):
+    """Dict arg order should not affect fingerprint."""
+    msg1 = {"action": "change_configuration", "args": {"key": "A", "value": "true"}}
+    msg2 = {"action": "change_configuration", "args": {"value": "true", "key": "A"}}
+    assert charge_point._cmd_fingerprint(msg1) == charge_point._cmd_fingerprint(msg2)
+
+
+@pytest.mark.asyncio
+async def test_process_mqtt_action_dedup_suppresses_duplicate(charge_point, monkeypatch):
+    """Second identical configuration command within the window is ignored."""
+    monkeypatch.setattr(cp_module, "OCPP_DEDUP_WINDOW", 90.0)
+
+    handled = []
+
+    async def fake_handle(msg):
+        handled.append(msg)
+        return None
+
+    monkeypatch.setattr(charge_point, "_handle_mqtt_action", fake_handle)
+
+    msg = {"action": "change_configuration", "args": {"key": "foo", "value": "true"}}
+    await charge_point._process_mqtt_action(msg)
+    await charge_point._process_mqtt_action(msg)  # duplicate
+
+    assert len(handled) == 1, "Duplicate command should have been suppressed"
+
+
+@pytest.mark.asyncio
+async def test_process_mqtt_action_does_not_dedup_remote_start(charge_point, monkeypatch):
+    """Non-idempotent commands must always be processed."""
+    monkeypatch.setattr(cp_module, "OCPP_DEDUP_WINDOW", 90.0)
+
+    handled = []
+
+    async def fake_handle(msg):
+        handled.append(msg)
+        return None
+
+    monkeypatch.setattr(charge_point, "_handle_mqtt_action", fake_handle)
+
+    msg = {
+        "action": "remote_start_transaction",
+        "args": {"connector_id": 1, "id_tag": "uc_default_auth"},
+    }
+    await charge_point._process_mqtt_action(msg)
+    await charge_point._process_mqtt_action(msg)
+
+    assert len(handled) == 2
+
+
+@pytest.mark.asyncio
+async def test_process_mqtt_actions_are_serialized(charge_point, monkeypatch):
+    """Only one OCPP command may run at a time for a charge point."""
+    active = 0
+    max_active = 0
+
+    async def fake_handle(msg):
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+
+    monkeypatch.setattr(charge_point, "_handle_mqtt_action", fake_handle)
+
+    await asyncio.gather(
+        charge_point._process_mqtt_action({"action": "clear_cache"}),
+        charge_point._process_mqtt_action({"action": "get_configuration"}),
+    )
+
+    assert max_active == 1
+
+
+@pytest.mark.asyncio
+async def test_process_mqtt_action_dedup_allows_after_window(charge_point, monkeypatch):
+    """Same command is allowed again after the dedup window expires."""
+    monkeypatch.setattr(cp_module, "OCPP_DEDUP_WINDOW", 90.0)
+
+    handled = []
+
+    async def fake_handle(msg):
+        handled.append(msg)
+        return None
+
+    monkeypatch.setattr(charge_point, "_handle_mqtt_action", fake_handle)
+
+    msg = {"action": "change_configuration", "args": {"key": "foo", "value": "true"}}
+    await charge_point._process_mqtt_action(msg)
+
+    # Manually expire the entry
+    fingerprint = charge_point._cmd_fingerprint(msg)
+    charge_point._cmd_dedup[fingerprint] = charge_point._cmd_dedup[fingerprint] - 100.0
+
+    await charge_point._process_mqtt_action(msg)
+
+    assert len(handled) == 2, "Command should be allowed after dedup window"
+
+
+@pytest.mark.asyncio
+async def test_process_mqtt_action_dedup_disabled(charge_point, monkeypatch):
+    """When OCPP_DEDUP_WINDOW=0, every command is processed."""
+    monkeypatch.setattr(cp_module, "OCPP_DEDUP_WINDOW", 0.0)
+
+    handled = []
+
+    async def fake_handle(msg):
+        handled.append(msg)
+        return None
+
+    monkeypatch.setattr(charge_point, "_handle_mqtt_action", fake_handle)
+
+    msg = {"action": "change_configuration", "args": {"key": "foo", "value": "true"}}
+    await charge_point._process_mqtt_action(msg)
+    await charge_point._process_mqtt_action(msg)
+
+    assert len(handled) == 2, "All commands should be processed when dedup disabled"
+
+
+def test_should_deduplicate_only_change_configuration(charge_point, monkeypatch):
+    monkeypatch.setattr(cp_module, "OCPP_DEDUP_WINDOW", 300.0)
+
+    assert charge_point._should_deduplicate({"action": "change_configuration"})
+    assert not charge_point._should_deduplicate({"action": "remote_start_transaction"})
+    assert not charge_point._should_deduplicate({"action": "reset"})
+
+
+@pytest.mark.asyncio
+async def test_process_mqtt_action_dedup_cleared_on_timeout(charge_point, monkeypatch):
+    """After a timeout the dedup entry is removed so the command can be retried."""
+    monkeypatch.setattr(cp_module, "OCPP_DEDUP_WINDOW", 90.0)
+    monkeypatch.setattr(cp_module, "OCPP_COMMAND_TIMEOUT", 0.01)
+
+    async def slow_handle(msg):
+        import asyncio
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(charge_point, "_handle_mqtt_action", slow_handle)
+    # Suppress error publishing
+    monkeypatch.setattr(charge_point, "_publish_command_error", AsyncMock())
+
+    msg = {"action": "change_configuration", "args": {"key": "foo", "value": "true"}}
+    await charge_point._process_mqtt_action(msg)
+
+    fingerprint = charge_point._cmd_fingerprint(msg)
+    assert fingerprint not in charge_point._cmd_dedup, "Dedup entry should be cleared after timeout"

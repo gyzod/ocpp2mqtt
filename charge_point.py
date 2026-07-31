@@ -44,15 +44,18 @@ MQTT_RETAINED_CMD_GRACE=float(os.getenv('MQTT_RETAINED_CMD_GRACE', '5'))
 OCPP_COMMAND_RETRY_ATTEMPTS=int(os.getenv('OCPP_COMMAND_RETRY_ATTEMPTS', '5'))
 OCPP_COMMAND_RETRY_BASE_DELAY=float(os.getenv('OCPP_COMMAND_RETRY_BASE_DELAY', '0.3'))
 
-# Timeout for OCPP commands sent to the charge point (seconds). The ocpp
-# library default is 30s which is far too long for flaky connections — if the
-# charge point doesn't respond, we want to fail fast and move on.
-OCPP_COMMAND_TIMEOUT=float(os.getenv('OCPP_COMMAND_TIMEOUT', '10'))
+# Timeout for OCPP commands sent to the charge point (seconds).
+OCPP_COMMAND_TIMEOUT=float(os.getenv('OCPP_COMMAND_TIMEOUT', '30'))
 
 # Maximum number of concurrent OCPP commands sent to a single charge point.
 # Prevents a burst of MQTT commands from exhausting resources when the charge
 # point is slow or unresponsive.
-OCPP_MAX_CONCURRENT_COMMANDS=int(os.getenv('OCPP_MAX_CONCURRENT_COMMANDS', '3'))
+OCPP_MAX_CONCURRENT_COMMANDS=int(os.getenv('OCPP_MAX_CONCURRENT_COMMANDS', '1'))
+
+# Deduplication window (seconds) for repeated ChangeConfiguration commands.
+# Set to 0 to disable.
+OCPP_DEDUP_WINDOW=float(os.getenv('OCPP_DEDUP_WINDOW', '300'))
+OCPP_DEDUP_ACTIONS = {'change_configuration'}
 
 _MQTT_ALLOWED_TRANSPORTS = {'tcp', 'websockets', 'unix'}
 if MQTT_TRANSPORT not in _MQTT_ALLOWED_TRANSPORTS:
@@ -96,6 +99,8 @@ class ChargePoint(cp):
         self._command_semaphore = asyncio.Semaphore(OCPP_MAX_CONCURRENT_COMMANDS)
         # Track pending command tasks so they can be cancelled on disconnect
         self._pending_commands: set[asyncio.Task] = set()
+        # Deduplication cache: maps command fingerprint -> last execution timestamp
+        self._cmd_dedup: dict[str, float] = {}
         
     def _mqtt_identifier(self):
         base_identifier = MQTT_CLIENT_ID or f"ocpp2mqtt-{self.id}"
@@ -528,6 +533,22 @@ class ChargePoint(cp):
         
         return False
 
+    def _cmd_fingerprint(self, msg: dict) -> str:
+        """Return a stable string key for deduplication of idempotent commands."""
+        action = msg.get('action', '')
+        args = msg.get('args', None)
+        try:
+            args_str = JSON.dumps(args, sort_keys=True) if args is not None else ''
+        except (TypeError, ValueError):
+            args_str = str(args)
+        return f"{action}:{args_str}"
+
+    def _should_deduplicate(self, msg: dict) -> bool:
+        return (
+            OCPP_DEDUP_WINDOW > 0
+            and msg.get('action') in OCPP_DEDUP_ACTIONS
+        )
+
     async def _process_mqtt_action(self, msg):
         """Process a single MQTT action with concurrency limiting and timeout.
 
@@ -535,6 +556,26 @@ class ChargePoint(cp):
         while waiting for a slow charge point response.
         """
         action = msg.get('action')
+
+        # Deduplicate: skip if the same command was successfully sent recently
+        if self._should_deduplicate(msg):
+            fingerprint = self._cmd_fingerprint(msg)
+            now = asyncio.get_event_loop().time()
+            last_sent = self._cmd_dedup.get(fingerprint)
+            if last_sent is not None and (now - last_sent) < OCPP_DEDUP_WINDOW:
+                logging.info(
+                    "Dedup: ignoring duplicate command '%s' (last sent %.1fs ago, window=%.0fs)",
+                    action, now - last_sent, OCPP_DEDUP_WINDOW,
+                )
+                return
+            # Record the time before sending so concurrent duplicates are also blocked
+            self._cmd_dedup[fingerprint] = now
+            # Prune stale entries to avoid unbounded growth
+            self._cmd_dedup = {
+                k: v for k, v in self._cmd_dedup.items()
+                if (now - v) < OCPP_DEDUP_WINDOW
+            }
+
         try:
             async with self._command_semaphore:
                 result = await asyncio.wait_for(
@@ -546,6 +587,9 @@ class ChargePoint(cp):
                 "OCPP command '%s' timed out after %ss for %s",
                 action, OCPP_COMMAND_TIMEOUT, self.id,
             )
+            # Remove from dedup cache so the command can be retried
+            if self._should_deduplicate(msg):
+                self._cmd_dedup.pop(self._cmd_fingerprint(msg), None)
             await self._publish_command_error(
                 msg, TimeoutError(f"Command '{action}' timed out after {OCPP_COMMAND_TIMEOUT}s")
             )
@@ -555,6 +599,9 @@ class ChargePoint(cp):
             raise
         except Exception as action_error:
             logging.error("MQTT action %s failed: %s", action, action_error)
+            # Remove from dedup cache so the command can be retried
+            if self._should_deduplicate(msg):
+                self._cmd_dedup.pop(self._cmd_fingerprint(msg), None)
             await self._publish_command_error(msg, action_error)
             return
 

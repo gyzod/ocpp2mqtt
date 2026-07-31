@@ -1,7 +1,7 @@
 """Version information for ocpp2mqtt."""
 
-__version__ = "1.1b"
-__version_info__ = (1, 1, "beta")
+__version__ = "1.2b"
+__version_info__ = (1, 2, "beta")
 
 # Application metadata
 APP_NAME = "ocpp2mqtt"

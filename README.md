@@ -1,6 +1,6 @@
 # ocpp2mqtt
 
-[![Version](https://img.shields.io/badge/version-1.0b-blue.svg)](https://github.com/gyzod/ocpp2mqtt/releases)
+[![Version](https://img.shields.io/badge/version-1.2b-blue.svg)](https://github.com/gyzod/ocpp2mqtt/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
@@ -128,6 +128,9 @@ Create a `.env` file or set environment variables:
 |----------|---------|-------------|
 | `OCPP_COMMAND_RETRY_ATTEMPTS` | `5` | Number of retry attempts when WebSocket is temporarily disconnected |
 | `OCPP_COMMAND_RETRY_BASE_DELAY` | `0.3` | Base delay in seconds between retries (exponential backoff) |
+| `OCPP_COMMAND_TIMEOUT` | `30` | Maximum time to wait for a charge point response |
+| `OCPP_MAX_CONCURRENT_COMMANDS` | `1` | Maximum concurrent commands per charge point |
+| `OCPP_DEDUP_WINDOW` | `300` | Window in seconds for ignoring identical `ChangeConfiguration` commands; other actions are never deduplicated; `0` disables it |
 
 ### Logging Configuration
 
