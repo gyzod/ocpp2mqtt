@@ -44,7 +44,7 @@ data:
 
 ### 3. Create Secret (Optional)
 
-For MQTT authentication:
+For MQTT authentication and optional WebSocket Basic Authentication:
 
 ```yaml
 apiVersion: v1
@@ -56,6 +56,8 @@ type: Opaque
 stringData:
   MQTT_USERNAME: "your-username"
   MQTT_PASSWORD: "your-password"
+  WEBSOCKET_AUTH_USERNAME: "ocpp-client"
+  WEBSOCKET_AUTH_PASSWORD: "your-websocket-password"
   AUTHORIZED_TAG_ID_LIST: '["tag1","tag2"]'
 ```
 

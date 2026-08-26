@@ -119,8 +119,15 @@ Create a `.env` file or set environment variables:
 |----------|---------|-------------|
 | `LISTEN_ADDR` | `0.0.0.0` | Address to bind the OCPP WebSocket server |
 | `LISTEN_PORT` | `3000` | Port to listen for OCPP connections |
+| `WEBSOCKET_AUTH_USERNAME` | *(empty)* | Username for optional WebSocket HTTP Basic Authentication |
+| `WEBSOCKET_AUTH_PASSWORD` | *(empty)* | Password for optional WebSocket HTTP Basic Authentication |
 | `AUTHORIZED_TAG_ID_LIST` | `[]` | JSON array of authorized RFID tags |
 | `EXPECTED_CHARGE_POINTS` | `[]` | JSON array of expected charge point IDs (publishes DISCONNECTED on startup) |
+
+Set both `WEBSOCKET_AUTH_USERNAME` and `WEBSOCKET_AUTH_PASSWORD` to protect the
+WebSocket handshake with HTTP Basic Authentication. Set neither to keep
+authentication disabled. Basic Authentication must be used over TLS (`wss://`)
+when connections cross an untrusted network.
 
 ### OCPP Command Retry Configuration
 
@@ -157,6 +164,9 @@ MQTT_PASSWORD=
 # Server Configuration
 LISTEN_PORT=3000
 LISTEN_ADDR=0.0.0.0
+# Optional WebSocket Basic Authentication
+# WEBSOCKET_AUTH_USERNAME=ocpp-client
+# WEBSOCKET_AUTH_PASSWORD=change-me
 AUTHORIZED_TAG_ID_LIST=["johnny-car","other-car"]
 EXPECTED_CHARGE_POINTS=["charger1","charger2"]
 

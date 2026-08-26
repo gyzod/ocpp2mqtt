@@ -31,12 +31,20 @@ except ModuleNotFoundError:
     sys.exit(1)
 
 from charge_point import ChargePoint
+from websockets.asyncio.server import basic_auth
 from websockets.typing import Subprotocol
 
 load_dotenv(verbose=True)
 
 LISTEN_ADDR=os.getenv('LISTEN_ADDR', '0.0.0.0') 
 LISTEN_PORT=int(os.getenv('LISTEN_PORT', 3000))
+WEBSOCKET_AUTH_USERNAME = os.getenv('WEBSOCKET_AUTH_USERNAME', '')
+WEBSOCKET_AUTH_PASSWORD = os.getenv('WEBSOCKET_AUTH_PASSWORD', '')
+
+if bool(WEBSOCKET_AUTH_USERNAME) != bool(WEBSOCKET_AUTH_PASSWORD):
+    raise ValueError(
+        "WEBSOCKET_AUTH_USERNAME and WEBSOCKET_AUTH_PASSWORD must be set together"
+    )
 
 # Expected charge points - publish DISCONNECTED state on startup
 _raw_expected_cps = os.getenv('EXPECTED_CHARGE_POINTS', '[]')
@@ -233,11 +241,20 @@ async def main():
     # Publish initial DISCONNECTED state for expected charge points
     await _publish_initial_disconnected_state()
     
+    process_request = None
+    if WEBSOCKET_AUTH_USERNAME and WEBSOCKET_AUTH_PASSWORD:
+        process_request = basic_auth(
+            realm="ocpp2mqtt",
+            credentials=(WEBSOCKET_AUTH_USERNAME, WEBSOCKET_AUTH_PASSWORD),
+        )
+        logging.info("WebSocket Basic Authentication enabled")
+
     server = await websockets.serve(
         on_connect,
         LISTEN_ADDR,
         LISTEN_PORT,
         subprotocols=[Subprotocol("ocpp1.6")],
+        process_request=process_request,
         ping_timeout=None,
     )
     logging.info("Server listening on %s:%s for OCPP connections...", LISTEN_ADDR, LISTEN_PORT)
