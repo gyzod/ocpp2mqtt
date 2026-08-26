@@ -9,6 +9,7 @@ import sys
 import os
 import urllib.parse
 import json
+import ssl
 from dotenv import load_dotenv
 import signal
 from datetime import datetime, timezone
@@ -40,10 +41,17 @@ LISTEN_ADDR=os.getenv('LISTEN_ADDR', '0.0.0.0')
 LISTEN_PORT=int(os.getenv('LISTEN_PORT', 3000))
 WEBSOCKET_AUTH_USERNAME = os.getenv('WEBSOCKET_AUTH_USERNAME', '')
 WEBSOCKET_AUTH_PASSWORD = os.getenv('WEBSOCKET_AUTH_PASSWORD', '')
+WEBSOCKET_SSL_CERTFILE = os.getenv('WEBSOCKET_SSL_CERTFILE', '')
+WEBSOCKET_SSL_KEYFILE = os.getenv('WEBSOCKET_SSL_KEYFILE', '')
 
 if bool(WEBSOCKET_AUTH_USERNAME) != bool(WEBSOCKET_AUTH_PASSWORD):
     raise ValueError(
         "WEBSOCKET_AUTH_USERNAME and WEBSOCKET_AUTH_PASSWORD must be set together"
+    )
+
+if bool(WEBSOCKET_SSL_CERTFILE) != bool(WEBSOCKET_SSL_KEYFILE):
+    raise ValueError(
+        "WEBSOCKET_SSL_CERTFILE and WEBSOCKET_SSL_KEYFILE must be set together"
     )
 
 # Expected charge points - publish DISCONNECTED state on startup
@@ -249,12 +257,22 @@ async def main():
         )
         logging.info("WebSocket Basic Authentication enabled")
 
+    ssl_context = None
+    if WEBSOCKET_SSL_CERTFILE and WEBSOCKET_SSL_KEYFILE:
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(
+            certfile=WEBSOCKET_SSL_CERTFILE,
+            keyfile=WEBSOCKET_SSL_KEYFILE,
+        )
+        logging.info("WebSocket TLS enabled")
+
     server = await websockets.serve(
         on_connect,
         LISTEN_ADDR,
         LISTEN_PORT,
         subprotocols=[Subprotocol("ocpp1.6")],
         process_request=process_request,
+        ssl=ssl_context,
         ping_timeout=None,
     )
     logging.info("Server listening on %s:%s for OCPP connections...", LISTEN_ADDR, LISTEN_PORT)
