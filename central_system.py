@@ -87,7 +87,13 @@ async def _cleanup_old_session(charge_point_id: str):
 
 async def on_connect(websocket: websockets.ServerConnection):
 
-    request_path = getattr(websocket, "path", "") or ""
+    request = getattr(websocket, "request", None)
+    request_path = (
+        getattr(request, "path", None)
+        or getattr(request, "target", None)
+        or getattr(websocket, "path", "")
+        or ""
+    )
     logging.info("Received new connection from %s, path=%s", websocket.remote_address, request_path)
 
     charge_point_id = None

@@ -13,7 +13,7 @@ from websockets.protocol import State
 
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint as cp
-from ocpp.v16.enums import AuthorizationStatus, Action, RegistrationStatus
+from ocpp.v16.enums import AuthorizationStatus, Action, DataTransferStatus, RegistrationStatus
 from ocpp.v16 import call_result
 
 # Use logger from logging_config (configured by central_system.py)
@@ -234,7 +234,7 @@ class ChargePoint(cp):
     async def on_data_transfer(self, **kwargs):
         logging.info("---> Data Transfer")
         await self.push_state_values_mqtt(**kwargs)
-        #return not implemented
+        return call_result.DataTransfer(status=DataTransferStatus.accepted)
 
     @on(Action.diagnostics_status_notification)
     async def on_diagnostics_status_notification(self, **kwargs):
