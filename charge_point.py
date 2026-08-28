@@ -199,6 +199,7 @@ class ChargePoint(cp):
     @on(Action.authorize)
     async def on_authorize(self, id_tag: str):
         logging.info('---> Starting authorize process')
+        logging.info('---> Received OCPP idTag: %s', id_tag)
         
         acceptedTag = (id_tag in AUTHORIZED_TAG_ID_LIST)
 
@@ -219,6 +220,12 @@ class ChargePoint(cp):
     @on(Action.boot_notification)
     async def on_boot_notification(self, charge_point_vendor: str, charge_point_model: str, **kwargs):
         logging.info('---> Boot Notification')
+        logging.info(
+            '---> BootNotification identity: vendor=%s, model=%s, fields=%s',
+            charge_point_vendor,
+            charge_point_model,
+            kwargs,
+        )
         await self.push_state_value_mqtt("charge_point_vendor", charge_point_vendor)
         await self.push_state_value_mqtt("charge_point_model", charge_point_model)
         await self.push_state_values_mqtt(**kwargs)

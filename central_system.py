@@ -85,6 +85,32 @@ async def _cleanup_old_session(charge_point_id: str):
             del _active_sessions[charge_point_id]
 
 
+async def _process_websocket_request(connection, request):
+    """Log safe handshake details before enforcing optional Basic Auth."""
+    authorization = request.headers.get("Authorization", "")
+    auth_scheme = authorization.split(" ", 1)[0] if authorization else "missing"
+    logging.info(
+        "WebSocket handshake from %s, path=%s, auth_scheme=%s, subprotocol=%s",
+        connection.remote_address,
+        request.path,
+        auth_scheme,
+        request.headers.get("Sec-WebSocket-Protocol", "missing"),
+    )
+
+    if _basic_auth is None:
+        return None
+
+    response = await _basic_auth(connection, request)
+    if response is not None:
+        logging.warning(
+            "WebSocket handshake rejected with 401 for %s, path=%s, auth_scheme=%s",
+            connection.remote_address,
+            request.path,
+            auth_scheme,
+        )
+    return response
+
+
 async def on_connect(websocket: websockets.ServerConnection):
 
     request = getattr(websocket, "request", None)
@@ -255,9 +281,10 @@ async def main():
     # Publish initial DISCONNECTED state for expected charge points
     await _publish_initial_disconnected_state()
     
-    process_request = None
+    global _basic_auth
+    _basic_auth = None
     if WEBSOCKET_AUTH_USERNAME and WEBSOCKET_AUTH_PASSWORD:
-        process_request = basic_auth(
+        _basic_auth = basic_auth(
             realm="ocpp2mqtt",
             credentials=(WEBSOCKET_AUTH_USERNAME, WEBSOCKET_AUTH_PASSWORD),
         )
@@ -277,7 +304,7 @@ async def main():
         LISTEN_ADDR,
         LISTEN_PORT,
         subprotocols=[Subprotocol("ocpp1.6")],
-        process_request=process_request,
+        process_request=_process_websocket_request,
         ssl=ssl_context,
         ping_timeout=None,
     )
