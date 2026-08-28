@@ -4,6 +4,7 @@
 
 
 import asyncio
+import base64
 import logging
 import sys
 import os
@@ -89,11 +90,27 @@ async def _process_websocket_request(connection, request):
     """Log safe handshake details before enforcing optional Basic Auth."""
     authorization = request.headers.get("Authorization", "")
     auth_scheme = authorization.split(" ", 1)[0] if authorization else "missing"
+    host = request.headers.get("Host", "unknown")
+    forwarded_proto = request.headers.get("X-Forwarded-Proto")
+    scheme = forwarded_proto or ("wss" if WEBSOCKET_SSL_CERTFILE else "ws")
+    username = "unknown"
+
+    if authorization.lower().startswith("basic "):
+        try:
+            encoded_credentials = authorization.split(" ", 1)[1]
+            credentials = base64.b64decode(encoded_credentials).decode("utf-8")
+            username = credentials.split(":", 1)[0]
+        except (ValueError, UnicodeDecodeError):
+            username = "invalid"
+
     logging.info(
-        "WebSocket handshake from %s, path=%s, auth_scheme=%s, subprotocol=%s",
+        "WebSocket handshake from %s, url=%s://%s%s, auth_scheme=%s, username=%s, subprotocol=%s",
         connection.remote_address,
+        scheme,
+        host,
         request.path,
         auth_scheme,
+        username,
         request.headers.get("Sec-WebSocket-Protocol", "missing"),
     )
 
@@ -103,10 +120,13 @@ async def _process_websocket_request(connection, request):
     response = await _basic_auth(connection, request)
     if response is not None:
         logging.warning(
-            "WebSocket handshake rejected with 401 for %s, path=%s, auth_scheme=%s",
+            "WebSocket handshake rejected with 401 for %s, url=%s://%s%s, auth_scheme=%s, username=%s",
             connection.remote_address,
+            scheme,
+            host,
             request.path,
             auth_scheme,
+            username,
         )
     return response
 
