@@ -4,11 +4,13 @@
 
 
 import asyncio
+import base64
 import logging
 import sys
 import os
 import urllib.parse
 import json
+import ssl
 from dotenv import load_dotenv
 import signal
 from datetime import datetime, timezone
@@ -31,12 +33,27 @@ except ModuleNotFoundError:
     sys.exit(1)
 
 from charge_point import ChargePoint
+from websockets.asyncio.server import basic_auth
 from websockets.typing import Subprotocol
 
 load_dotenv(verbose=True)
 
 LISTEN_ADDR=os.getenv('LISTEN_ADDR', '0.0.0.0') 
 LISTEN_PORT=int(os.getenv('LISTEN_PORT', 3000))
+WEBSOCKET_AUTH_USERNAME = os.getenv('WEBSOCKET_AUTH_USERNAME', '')
+WEBSOCKET_AUTH_PASSWORD = os.getenv('WEBSOCKET_AUTH_PASSWORD', '')
+WEBSOCKET_SSL_CERTFILE = os.getenv('WEBSOCKET_SSL_CERTFILE', '')
+WEBSOCKET_SSL_KEYFILE = os.getenv('WEBSOCKET_SSL_KEYFILE', '')
+
+if bool(WEBSOCKET_AUTH_USERNAME) != bool(WEBSOCKET_AUTH_PASSWORD):
+    raise ValueError(
+        "WEBSOCKET_AUTH_USERNAME and WEBSOCKET_AUTH_PASSWORD must be set together"
+    )
+
+if bool(WEBSOCKET_SSL_CERTFILE) != bool(WEBSOCKET_SSL_KEYFILE):
+    raise ValueError(
+        "WEBSOCKET_SSL_CERTFILE and WEBSOCKET_SSL_KEYFILE must be set together"
+    )
 
 # Expected charge points - publish DISCONNECTED state on startup
 _raw_expected_cps = os.getenv('EXPECTED_CHARGE_POINTS', '[]')
@@ -69,9 +86,60 @@ async def _cleanup_old_session(charge_point_id: str):
             del _active_sessions[charge_point_id]
 
 
+async def _process_websocket_request(connection, request):
+    """Log safe handshake details before enforcing optional Basic Auth."""
+    authorization = request.headers.get("Authorization", "")
+    auth_scheme = authorization.split(" ", 1)[0] if authorization else "missing"
+    host = request.headers.get("Host", "unknown")
+    forwarded_proto = request.headers.get("X-Forwarded-Proto")
+    scheme = forwarded_proto or ("wss" if WEBSOCKET_SSL_CERTFILE else "ws")
+    username = "unknown"
+
+    if authorization.lower().startswith("basic "):
+        try:
+            encoded_credentials = authorization.split(" ", 1)[1]
+            credentials = base64.b64decode(encoded_credentials).decode("utf-8")
+            username = credentials.split(":", 1)[0]
+        except (ValueError, UnicodeDecodeError):
+            username = "invalid"
+
+    logging.info(
+        "WebSocket handshake from %s, url=%s://%s%s, auth_scheme=%s, username=%s, subprotocol=%s",
+        connection.remote_address,
+        scheme,
+        host,
+        request.path,
+        auth_scheme,
+        username,
+        request.headers.get("Sec-WebSocket-Protocol", "missing"),
+    )
+
+    if _basic_auth is None:
+        return None
+
+    response = await _basic_auth(connection, request)
+    if response is not None:
+        logging.warning(
+            "WebSocket handshake rejected with 401 for %s, url=%s://%s%s, auth_scheme=%s, username=%s",
+            connection.remote_address,
+            scheme,
+            host,
+            request.path,
+            auth_scheme,
+            username,
+        )
+    return response
+
+
 async def on_connect(websocket: websockets.ServerConnection):
 
-    request_path = getattr(websocket, "path", "") or ""
+    request = getattr(websocket, "request", None)
+    request_path = (
+        getattr(request, "path", None)
+        or getattr(request, "target", None)
+        or getattr(websocket, "path", "")
+        or ""
+    )
     logging.info("Received new connection from %s, path=%s", websocket.remote_address, request_path)
 
     charge_point_id = None
@@ -233,11 +301,31 @@ async def main():
     # Publish initial DISCONNECTED state for expected charge points
     await _publish_initial_disconnected_state()
     
+    global _basic_auth
+    _basic_auth = None
+    if WEBSOCKET_AUTH_USERNAME and WEBSOCKET_AUTH_PASSWORD:
+        _basic_auth = basic_auth(
+            realm="ocpp2mqtt",
+            credentials=(WEBSOCKET_AUTH_USERNAME, WEBSOCKET_AUTH_PASSWORD),
+        )
+        logging.info("WebSocket Basic Authentication enabled")
+
+    ssl_context = None
+    if WEBSOCKET_SSL_CERTFILE and WEBSOCKET_SSL_KEYFILE:
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(
+            certfile=WEBSOCKET_SSL_CERTFILE,
+            keyfile=WEBSOCKET_SSL_KEYFILE,
+        )
+        logging.info("WebSocket TLS enabled")
+
     server = await websockets.serve(
         on_connect,
         LISTEN_ADDR,
         LISTEN_PORT,
         subprotocols=[Subprotocol("ocpp1.6")],
+        process_request=_process_websocket_request,
+        ssl=ssl_context,
         ping_timeout=None,
     )
     logging.info("Server listening on %s:%s for OCPP connections...", LISTEN_ADDR, LISTEN_PORT)

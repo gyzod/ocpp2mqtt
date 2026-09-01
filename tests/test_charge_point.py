@@ -180,23 +180,37 @@ async def test_on_authorize_empty_tag_list(monkeypatch, charge_point_with_mqtt):
 # =============================================================================
 
 @pytest.mark.asyncio
-async def test_on_start_transaction_charging_enabled(charge_point_with_mqtt, sample_start_transaction):
-    """Test start transaction accepted when charging is enabled."""
+async def test_on_start_transaction_charging_enabled(monkeypatch, charge_point_with_mqtt, sample_start_transaction):
+    """Test start transaction accepted when charging is enabled and the tag is authorized."""
+    monkeypatch.setattr(cp_module, "AUTHORIZED_TAG_ID_LIST", ["test-tag", "other-tag"])
     charge_point_with_mqtt.charging_enabled = "ON"
-    
+
     result = await charge_point_with_mqtt.on_start_transaction(**sample_start_transaction)
-    
+
     assert result.id_tag_info['status'] == AuthorizationStatus.accepted
     assert result.transaction_id == charge_point_with_mqtt.transaction_id
 
 
 @pytest.mark.asyncio
-async def test_on_start_transaction_charging_disabled(charge_point_with_mqtt, sample_start_transaction):
+async def test_on_start_transaction_charging_disabled(monkeypatch, charge_point_with_mqtt, sample_start_transaction):
     """Test start transaction blocked when charging is disabled."""
+    monkeypatch.setattr(cp_module, "AUTHORIZED_TAG_ID_LIST", ["test-tag"])
     charge_point_with_mqtt.charging_enabled = "OFF"
-    
+
     result = await charge_point_with_mqtt.on_start_transaction(**sample_start_transaction)
-    
+
+    assert result.id_tag_info['status'] == AuthorizationStatus.blocked
+
+
+@pytest.mark.asyncio
+async def test_on_start_transaction_blocked_for_unauthorized_tag(monkeypatch, charge_point_with_mqtt, sample_start_transaction):
+    """Test start transaction blocked when the ID tag is not authorized."""
+    monkeypatch.setattr(cp_module, "AUTHORIZED_TAG_ID_LIST", ["valid-tag", "other-tag"])
+    charge_point_with_mqtt.charging_enabled = "ON"
+    payload = {**sample_start_transaction, "id_tag": "blocked-tag"}
+
+    result = await charge_point_with_mqtt.on_start_transaction(**payload)
+
     assert result.id_tag_info['status'] == AuthorizationStatus.blocked
 
 

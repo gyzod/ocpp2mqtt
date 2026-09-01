@@ -13,7 +13,7 @@ from websockets.protocol import State
 
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint as cp
-from ocpp.v16.enums import AuthorizationStatus, Action, RegistrationStatus
+from ocpp.v16.enums import AuthorizationStatus, Action, DataTransferStatus, RegistrationStatus
 from ocpp.v16 import call_result
 
 # Use logger from logging_config (configured by central_system.py)
@@ -196,22 +196,25 @@ class ChargePoint(cp):
         
     #Received events from the charge point
 
+    def _authorization_status_for_tag(self, id_tag: str):
+        accepted_tag = (id_tag in AUTHORIZED_TAG_ID_LIST)
+        if accepted_tag and self.is_charging_enabled():
+            self.authorized_tag_id = id_tag
+            return AuthorizationStatus.accepted
+        return AuthorizationStatus.blocked
+
     @on(Action.authorize)
     async def on_authorize(self, id_tag: str):
         logging.info('---> Starting authorize process')
-        
-        acceptedTag = (id_tag in AUTHORIZED_TAG_ID_LIST)
+        logging.info('---> Received OCPP idTag: %s', id_tag)
 
-        if acceptedTag and self.is_charging_enabled():
-            authorization=AuthorizationStatus.accepted
-            self.authorized_tag_id=id_tag
-        else:
-            authorization=AuthorizationStatus.blocked
+        accepted_tag = (id_tag in AUTHORIZED_TAG_ID_LIST)
+        authorization = self._authorization_status_for_tag(id_tag)
 
         logging.info('---> Charging enabled : %s', self.is_charging_enabled())
-        logging.info('---> Authorize tag accepted : %s', acceptedTag)
+        logging.info('---> Authorize tag accepted : %s', accepted_tag)
         logging.info('---> Authorize result : %s', authorization)
-            
+
         await self.push_state_value_mqtt("authorize", authorization)
         return call_result.Authorize(id_tag_info={'status': authorization})
     
@@ -219,6 +222,12 @@ class ChargePoint(cp):
     @on(Action.boot_notification)
     async def on_boot_notification(self, charge_point_vendor: str, charge_point_model: str, **kwargs):
         logging.info('---> Boot Notification')
+        logging.info(
+            '---> BootNotification identity: vendor=%s, model=%s, fields=%s',
+            charge_point_vendor,
+            charge_point_model,
+            kwargs,
+        )
         await self.push_state_value_mqtt("charge_point_vendor", charge_point_vendor)
         await self.push_state_value_mqtt("charge_point_model", charge_point_model)
         await self.push_state_values_mqtt(**kwargs)
@@ -234,7 +243,7 @@ class ChargePoint(cp):
     async def on_data_transfer(self, **kwargs):
         logging.info("---> Data Transfer")
         await self.push_state_values_mqtt(**kwargs)
-        #return not implemented
+        return call_result.DataTransfer(status=DataTransferStatus.accepted)
 
     @on(Action.diagnostics_status_notification)
     async def on_diagnostics_status_notification(self, **kwargs):
@@ -280,20 +289,17 @@ class ChargePoint(cp):
         await self.push_state_value_mqtt("meter_start_timestamp", timestamp)
         await self.push_state_value_mqtt("meter_start", meter_start)
         await self.push_state_values_mqtt(**kwargs)
-        
+
         for k,v in kwargs.items():
             logging.info("%s: %s", k, v)
 
-        if self.is_charging_enabled():
-            authStatus = AuthorizationStatus.accepted
-        else:
-            authStatus = AuthorizationStatus.blocked
+        auth_status = self._authorization_status_for_tag(id_tag)
 
         logging.info('---> Charging enabled : %s', self.is_charging_enabled())
-        logging.info('---> Start transaction result : %s', authStatus)
-               
+        logging.info('---> Start transaction result : %s', auth_status)
+
         return call_result.StartTransaction(
-            id_tag_info={'status': authStatus},
+            id_tag_info={'status': auth_status},
             transaction_id=self.get_transaction_id()
         )
 

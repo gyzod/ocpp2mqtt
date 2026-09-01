@@ -119,8 +119,17 @@ Create a `.env` file or set environment variables:
 |----------|---------|-------------|
 | `LISTEN_ADDR` | `0.0.0.0` | Address to bind the OCPP WebSocket server |
 | `LISTEN_PORT` | `3000` | Port to listen for OCPP connections |
+| `WEBSOCKET_AUTH_USERNAME` | *(empty)* | Username for optional WebSocket HTTP Basic Authentication |
+| `WEBSOCKET_AUTH_PASSWORD` | *(empty)* | Password for optional WebSocket HTTP Basic Authentication |
+| `WEBSOCKET_SSL_CERTFILE` | *(empty)* | PEM certificate file, including intermediates when required |
+| `WEBSOCKET_SSL_KEYFILE` | *(empty)* | PEM private key file for the certificate |
 | `AUTHORIZED_TAG_ID_LIST` | `[]` | JSON array of authorized RFID tags |
 | `EXPECTED_CHARGE_POINTS` | `[]` | JSON array of expected charge point IDs (publishes DISCONNECTED on startup) |
+
+Set both `WEBSOCKET_AUTH_USERNAME` and `WEBSOCKET_AUTH_PASSWORD` to protect the
+WebSocket handshake with HTTP Basic Authentication. Set neither to keep
+authentication disabled. Basic Authentication must be used over TLS (`wss://`)
+when connections cross an untrusted network.
 
 ### OCPP Command Retry Configuration
 
@@ -157,6 +166,12 @@ MQTT_PASSWORD=
 # Server Configuration
 LISTEN_PORT=3000
 LISTEN_ADDR=0.0.0.0
+# Optional WebSocket Basic Authentication
+# WEBSOCKET_AUTH_USERNAME=ocpp-client
+# WEBSOCKET_AUTH_PASSWORD=change-me
+# Optional WSS/TLS. Set both paths together.
+# WEBSOCKET_SSL_CERTFILE=/etc/ocpp2mqtt/tls/fullchain.pem
+# WEBSOCKET_SSL_KEYFILE=/etc/ocpp2mqtt/tls/privkey.pem
 AUTHORIZED_TAG_ID_LIST=["johnny-car","other-car"]
 EXPECTED_CHARGE_POINTS=["charger1","charger2"]
 
@@ -186,6 +201,21 @@ ws://<server-ip>:<port>/<station-id>
 ```
 
 Example: `ws://192.168.1.10:3000/charger1`
+
+To enable secure WebSockets, set `WEBSOCKET_SSL_CERTFILE` and
+`WEBSOCKET_SSL_KEYFILE` to readable PEM files, then restart the server. The
+certificate file should contain the server certificate followed by any
+intermediate certificates. Connect using:
+
+```
+wss://<server-hostname>:<port>/<station-id>
+```
+
+Example: `wss://ocpp.example.com:3000/charger1`
+
+The private key must remain secret and should not be committed to the
+repository. In Docker or Kubernetes, mount the certificate and key into the
+container and use their container paths in the environment variables.
 
 ## 📡 MQTT Topics
 
