@@ -310,9 +310,7 @@ Send commands to: `<MQTT_BASEPATH>/<station-id>/cmd`
 ```json
 {
     "action": "remote_stop_transaction",
-    "args": {
-        "transaction_id": 1
-    }
+    "args": {}
 }
 ```
 
